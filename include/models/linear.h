@@ -20,6 +20,11 @@ class SimpleLinearModel {
 
   SimpleLinearModel(const WeightsList &init_weights) : weights_(init_weights) {}
 
+  template <typename... TWeights>
+  SimpleLinearModel(TWeights &&...init_weights) {
+    FillWeights(std::forward<TWeights>(init_weights)...);
+  }
+
   const ResultsList &GetActionValues(const State &state) {
     for (int i = 0; i < kActionsDim; ++i) {
       double value_ = 0.0;
@@ -45,6 +50,16 @@ class SimpleLinearModel {
   WeightsList weights_{};
   ResultsList results_{};
   double alpha_{1.0};
+
+  template <typename TFirst, typename... TRest>
+  void FillWeights(TFirst &&first, TRest &&...rest) {
+    static_assert(sizeof...(rest) + 1 <= kActionsDim,
+                  "Too many weight sets provided");
+    weights_[kActionsDim - sizeof...(rest) - 1] = std::forward<TFirst>(first);
+    if constexpr (sizeof...(rest) > 0)
+      FillWeights(std::forward<TRest>(rest)...);
+  }
+  
 };
 }  // namespace RLLib
 #endif
