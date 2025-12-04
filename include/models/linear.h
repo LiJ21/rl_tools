@@ -2,7 +2,7 @@
 #define MODELS_LINEAR_H
 #include <array>
 
-namespace RLLib {
+namespace RLlib::Models {
 template <int tFeaturesDim, int tActionsDim>
 class SimpleLinearModel {
  public:
@@ -59,7 +59,6 @@ class SimpleLinearModel {
     if constexpr (sizeof...(rest) > 0)
       FillWeights(std::forward<TRest>(rest)...);
   }
-  
 };
-}  // namespace RLLib
+}  // namespace RLlib
 #endif
