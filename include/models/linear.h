@@ -3,14 +3,17 @@
 #include <array>
 
 namespace RLlib::Models {
-template <int tFeaturesDim, int tActionsDim>
+template <int tFeaturesDim, int tActionsDim, typename TFeature = double,
+          typename TResult = double>
 class SimpleLinearModel {
  public:
   static constexpr int kFeaturesDim = tFeaturesDim;
   static constexpr int kActionsDim = tActionsDim;
-  using State = std::array<double, kFeaturesDim>;
+  using Feature = TFeature;
+  using Result = TResult;
+  using State = std::array<Feature, kFeaturesDim>;
   using WeightsList = std::array<State, kActionsDim>;
-  using ResultsList = std::array<double, kActionsDim>;
+  using ResultsList = std::array<Result, kActionsDim>;
 
   SimpleLinearModel(double init_weight = 0.0) {
     for (auto &weights : weights_) {
@@ -60,5 +63,5 @@ class SimpleLinearModel {
       FillWeights(std::forward<TRest>(rest)...);
   }
 };
-}  // namespace RLlib
+}  // namespace RLlib::Models
 #endif

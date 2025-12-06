@@ -1,25 +1,27 @@
+#include <agents/sarsa.h>
+
 #include <cassert>
 #include <fstream>
 #include <iostream>
 
-#include <agents/sarsa.h>
-
 constexpr int nrows = 5;
 constexpr int ncols = 6;
 constexpr int nstates = nrows * ncols;
+constexpr int nstate_dim = 2;
 constexpr int nactions = 4;
 
-using Direction = std::pair<int, int>;
-using Agent = RLlib::TabularSarsaAgent<nstates, nactions, Direction>;
+using Direction = std::array<int, 2>;
+using Agent = RLlib::LinearSarsaAgent<nstate_dim, nactions, Direction, int>;
+using State = typename Agent::State;
 using ActionsList = Agent::ActionsList;
 
 int main(int argc, char **argv) {
+
   assert(argc > 3);
   std::string fname = argv[1];
   int Nstep = std::stoi(argv[2]);
-  int train_step =  std::stoi(argv[3]);
+  int train_step = std::stoi(argv[3]);
   double epsilon = std::stof(argv[4]);
-
   Agent agent(ActionsList{Direction{1, 0}, Direction{0, 1}, Direction{-1, 0},
                           Direction{0, -1}},
               epsilon, 1.0, 0.0);
@@ -51,22 +53,25 @@ int main(int argc, char **argv) {
 
   auto loc = [](int x, int y) { return x * ncols + y; };
 
-  auto coords = [](int state) {
-    return std::make_pair(state / ncols, state % ncols);
-  };
+  // auto coords = [](int state) {
+  //   return std::make_pair(state / ncols, state % ncols);
+  // };
 
-  int state = 0;
+  auto state = State{0, 0};
 
   std::vector<double> rewards(Nstep, 0.0);
-  std::vector<int> states(Nstep, 0);
+  std::vector<State> states(Nstep, {{}});
   agent.SetLearningRate(0.1);
   for (int step = 0; step < Nstep; ++step) {
     auto action = agent.UpdateState(state);
 
-    state = loc((coords(state).first + action.first + nrows) % nrows,
-                (coords(state).second + action.second + ncols) % ncols);
+    for (int i = 0; i < nstate_dim; ++i) {
+      state[i] = (state[i] + action[i] + (i == 0 ? nrows : ncols)) %
+                 (i == 0 ? nrows : ncols);
+    }
+
     // agent.SetLearningRate(0.1 / (step + 1));
-    auto reward = state_values[state];
+    auto reward = state_values[loc(state[0], state[1])];
     rewards[step] = reward;
     states[step] = state;
     agent.CollectReward(reward);
@@ -94,24 +99,7 @@ int main(int argc, char **argv) {
       return 5;
     }
     for (const auto &r : states) {
-      ofs << coords(r).first << "," << coords(r).second << std::endl;
-    }
-    ofs.close();
-  }
-  {
-    std::cout << "Writing Q-values to files..." << std::endl;
-    std::ofstream ofs("./q_values.txt");
-    if (!ofs.is_open()) {
-      std::cerr << "Failed to open ./q_values.txt for writing" << std::endl;
-      return 6;
-    }
-    const auto &q_values = agent.GetModel().GetActionValues();
-    for (int s = 0; s < nstates; ++s) {
-      ofs << coords(s).first << "," << coords(s).second << ",";
-      for (int a = 0; a < nactions; ++a) {
-        ofs << q_values[s][a] << ",";
-      }
-      ofs << std::endl;
+      ofs << r[0] << "," << r[1] << std::endl;
     }
     ofs.close();
   }

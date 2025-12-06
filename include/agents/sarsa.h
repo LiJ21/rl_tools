@@ -5,6 +5,8 @@
 #include <models/tabular.h>
 
 namespace RLlib {
+
+enum class SarsaTrainingMode { kOnPolicy = 0, kQLearning = 1 };
 template <typename TModel, typename TAction, typename TReward>
 class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
                                     TAction, TReward, typename TModel::State> {
@@ -24,6 +26,7 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
       : actions_(actions),
         epsilon_(epsilon),
         gamma_(gamma),
+        current_gamma_(1.0),
         model_(std::forward<TArgs>(args)...) {
     static_assert(CModel<TModel>, "TModel must satisfy the CModel concept");
   }
@@ -51,18 +54,30 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
       idx_result_ = idx_best_;
     }
     Base::action_ = actions_[idx_result_];
-
-    if (!is_first_round_) {
-      double td_target = Base::reward_ + gamma_ * max_value_;
-      model_.Update(last_state_, last_action_idx_, last_action_value_,
-                    td_target);
-    } else {
-      is_first_round_ = false;
+    double new_action_value{};
+    if (training_mode_ == SarsaTrainingMode::kQLearning) {
+      new_action_value = max_value_;
+    } else if (training_mode_ == SarsaTrainingMode::kOnPolicy) {
+      new_action_value = action_values[idx_result_];
     }
 
-    last_state_ = Base::state_;
-    last_action_idx_ = idx_result_;
-    last_action_value_ = action_values[idx_result_];
+    if (Base::round_ % steps_ == 0) {
+      if (!is_first_round_) {
+        target_ += current_gamma_ * (Base::reward_ + gamma_ * new_action_value);
+        model_.Update(last_state_, last_action_idx_, last_action_value_,
+                      target_);
+        target_ = 0.0;
+      } else {
+        is_first_round_ = false;
+      }
+
+      last_state_ = Base::state_;
+      last_action_idx_ = idx_result_;
+      last_action_value_ = action_values[idx_result_];
+    } else {
+      target_ += current_gamma_ * Base::reward_;
+      current_gamma_ *= gamma_;
+    }
   }
 
   void SetEpsilon(double epsilon) { epsilon_ = epsilon; }
@@ -73,6 +88,10 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
 
   auto &GetModel() { return model_; }
 
+  void SetSteps(size_t steps) { steps_ = steps; }
+
+  void SetTrainingMode(SarsaTrainingMode mode) { training_mode_ = mode; }
+
  private:
   Model model_;
   const ActionsList actions_;
@@ -82,13 +101,17 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
   double last_action_value_ = 0.0;
   double gamma_;
   bool is_first_round_ = true;
+  double target_{};
+  size_t steps_{1};
+  double current_gamma_{};
+  SarsaTrainingMode training_mode_{SarsaTrainingMode::kOnPolicy};
 };
 
 template <int tFeaturesDim, int tActionsDim, typename TAction = double,
-          typename TReward = double>
+          typename TFeature = double, typename TReward = double>
 using LinearSarsaAgent =
-    SarsaAgent<Models::SimpleLinearModel<tFeaturesDim, tActionsDim>, TAction,
-               TReward>;
+    SarsaAgent<Models::SimpleLinearModel<tFeaturesDim, tActionsDim, TFeature>,
+               TAction, TReward>;
 
 template <int tStatesDim, int tActionsDim, typename TAction = int,
           typename TReward = double>
