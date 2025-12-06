@@ -98,22 +98,6 @@ int main(int argc, char **argv) {
     }
     ofs.close();
   }
-  {
-    std::cout << "Writing Q-values to files..." << std::endl;
-    std::ofstream ofs("./q_values.txt");
-    if (!ofs.is_open()) {
-      std::cerr << "Failed to open ./q_values.txt for writing" << std::endl;
-      return 6;
-    }
-    const auto &q_values = agent.GetModel().GetActionValues();
-    for (int s = 0; s < nstates; ++s) {
-      ofs << coords(s).first << "," << coords(s).second << ",";
-      for (int a = 0; a < nactions; ++a) {
-        ofs << q_values[s][a] << ",";
-      }
-      ofs << std::endl;
-    }
-    ofs.close();
-  }
+  agent.GetModel().OutputModel("./trained_model.txt");
   return 0;
 }

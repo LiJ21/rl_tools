@@ -1,6 +1,8 @@
 #ifndef MODELS_LINEAR_H
 #define MODELS_LINEAR_H
 #include <array>
+#include <string_view>
+#include <fstream>
 
 namespace RLlib::Models {
 template <int tFeaturesDim, int tActionsDim, typename TFeature = double,
@@ -49,6 +51,19 @@ class SimpleLinearModel {
 
   void SetLearningRate(double alpha) { alpha_ = alpha; }
 
+  void OutputModel(std::string_view fname) const {
+      std::ofstream ofs(fname.data());
+    if (!ofs.is_open()) {
+      throw std::runtime_error("Failed to open output file");
+      ;
+    }
+    for (int i = 0; i < kActionsDim; ++i) {
+      for (int j = 0; j < kFeaturesDim; ++j) {
+        ofs << weights_[i][j] << ",";
+      }
+      ofs << std::endl;
+    }
+  }
  private:
   WeightsList weights_{};
   ResultsList results_{};

@@ -18,6 +18,7 @@ concept CModel =
         model.Update(state, action_idx, action_value, td_target)
       } -> std::same_as<void>;
       { model.SetLearningRate(0.1) } -> std::same_as<void>;
+      { model.OutputModel(std::string_view{}) } -> std::same_as<void>;
     };
 
 template <typename TAgent>

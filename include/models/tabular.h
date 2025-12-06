@@ -1,6 +1,8 @@
 #ifndef MODELS_TABULAR_H
 #define MODELS_TABULAR_H
 #include <array>
+#include <fstream>
+#include <string_view>
 
 namespace RLlib::Models {
 template <int tStatesDim, int tActionsDim>
@@ -34,8 +36,20 @@ class Tabular {
 
   void SetLearningRate(double alpha) { alpha_ = alpha; }
 
-  const QType &GetActionValues() const {
-    return action_values_;
+  const QType &GetActionValues() const { return action_values_; }
+
+  void OutputModel(std::string_view fname) const {
+    std::ofstream ofs(fname.data());
+    if (!ofs.is_open()) {
+      throw std::runtime_error("Failed to open output file");
+      ;
+    }
+    for (int s = 0; s < kStatesDim; ++s) {
+      for (int a = 0; a < kActionsDim; ++a) {
+        ofs << action_values_[s][a] << ",";
+      }
+      ofs << std::endl;
+    }
   }
 
  private:

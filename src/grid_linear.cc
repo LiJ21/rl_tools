@@ -16,7 +16,6 @@ using State = typename Agent::State;
 using ActionsList = Agent::ActionsList;
 
 int main(int argc, char **argv) {
-
   assert(argc > 3);
   std::string fname = argv[1];
   int Nstep = std::stoi(argv[2]);
@@ -103,5 +102,7 @@ int main(int argc, char **argv) {
     }
     ofs.close();
   }
+  agent.GetModel().OutputModel("./trained_model.txt");
+
   return 0;
 }
