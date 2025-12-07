@@ -1,8 +1,8 @@
+#include <agents/sarsa.h>
+
 #include <cassert>
 #include <fstream>
 #include <iostream>
-
-#include <agents/sarsa.h>
 
 constexpr int nrows = 5;
 constexpr int ncols = 6;
@@ -17,12 +17,12 @@ int main(int argc, char **argv) {
   assert(argc > 3);
   std::string fname = argv[1];
   int Nstep = std::stoi(argv[2]);
-  int train_step =  std::stoi(argv[3]);
+  int train_step = std::stoi(argv[3]);
   double epsilon = std::stof(argv[4]);
 
   Agent agent(ActionsList{Direction{1, 0}, Direction{0, 1}, Direction{-1, 0},
                           Direction{0, -1}},
-              epsilon, 1.0, 0.0);
+              epsilon, 0.5, 0.0);
   agent.SetSteps(train_step);
 
   std::array<double, nstates> state_values{};
@@ -70,6 +70,8 @@ int main(int argc, char **argv) {
     rewards[step] = reward;
     states[step] = state;
     agent.CollectReward(reward);
+    agent.GetModel().OutputModel("./intermediate_model.txt", ',',
+                                 step == 0 ? false : true);
   }
 
   std::cout << "Finished " << Nstep << " steps." << std::endl;

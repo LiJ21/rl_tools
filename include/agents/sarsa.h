@@ -32,11 +32,11 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
   }
 
   void UpdateStateImpl() {
-    int idx_best_ = -1;
-    double max_value_ = -1e9;
+    int idx_best_ = 0;
     auto action_values = model_.GetActionValues(Base::state_);
+    double max_value_ = action_values[0];
 
-    for (int i = 0; i < kActionsDim; ++i) {
+    for (int i = 1; i < kActionsDim; ++i) {
       if (action_values[i] > max_value_) {
         idx_best_ = i;
         max_value_ = action_values[i];

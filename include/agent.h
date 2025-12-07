@@ -19,6 +19,7 @@ concept CModel =
       } -> std::same_as<void>;
       { model.SetLearningRate(0.1) } -> std::same_as<void>;
       { model.OutputModel(std::string_view{}) } -> std::same_as<void>;
+      { model.LoadModel(std::string_view{}) } -> std::same_as<void>;
     };
 
 template <typename TAgent>

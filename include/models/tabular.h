@@ -38,17 +38,41 @@ class Tabular {
 
   const QType &GetActionValues() const { return action_values_; }
 
-  void OutputModel(std::string_view fname) const {
-    std::ofstream ofs(fname.data());
+  void OutputModel(std::string_view fname, char delimiter = '\n',
+                   bool append = false) const {
+    std::ofstream ofs(fname.data(), append ? std::ios::app : std::ios::out);
     if (!ofs.is_open()) {
       throw std::runtime_error("Failed to open output file");
-      ;
     }
     for (int s = 0; s < kStatesDim; ++s) {
       for (int a = 0; a < kActionsDim; ++a) {
-        ofs << action_values_[s][a] << ",";
+        ofs << action_values_[s][a];
+        if (a != kActionsDim - 1) {
+          ofs << ",";
+        }
       }
-      ofs << std::endl;
+      if (s != kStatesDim - 1) {
+        ofs << delimiter;
+      }
+    }
+    ofs << '\n';
+  }
+
+  void LoadModel(std::string_view fname, char delimiter = '\n') {
+    std::ifstream ifs(fname.data());
+    if (!ifs.is_open()) {
+      throw std::runtime_error("Failed to open input file");
+    }
+    for (int s = 0; s < kStatesDim; ++s) {
+      for (int a = 0; a < kActionsDim; ++a) {
+        ifs >> action_values_[s][a];
+        if (ifs.peek() == ',') {
+          ifs.ignore();
+        }
+      }
+      if (ifs.peek() == delimiter) {
+        ifs.ignore();
+      }
     }
   }
 

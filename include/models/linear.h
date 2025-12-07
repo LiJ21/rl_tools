@@ -1,12 +1,13 @@
 #ifndef MODELS_LINEAR_H
 #define MODELS_LINEAR_H
 #include <array>
-#include <string_view>
 #include <fstream>
+#include <iostream>
+#include <string_view>
 
 namespace RLlib::Models {
 template <int tFeaturesDim, int tActionsDim, typename TFeature = double,
-          typename TResult = double>
+          typename TWeight = double, typename TResult = double>
 class SimpleLinearModel {
  public:
   static constexpr int kFeaturesDim = tFeaturesDim;
@@ -14,7 +15,9 @@ class SimpleLinearModel {
   using Feature = TFeature;
   using Result = TResult;
   using State = std::array<Feature, kFeaturesDim>;
-  using WeightsList = std::array<State, kActionsDim>;
+  using Weight = TWeight;
+  using Weights = std::array<Weight, kFeaturesDim>;
+  using WeightsList = std::array<Weights, kActionsDim>;
   using ResultsList = std::array<Result, kActionsDim>;
 
   SimpleLinearModel(double init_weight = 0.0) {
@@ -51,19 +54,44 @@ class SimpleLinearModel {
 
   void SetLearningRate(double alpha) { alpha_ = alpha; }
 
-  void OutputModel(std::string_view fname) const {
-      std::ofstream ofs(fname.data());
+  void OutputModel(std::string_view fname, char delimiter = '\n',
+                   bool append = false) const {
+    std::ofstream ofs(fname.data(), append ? std::ios::app : std::ios::out);
     if (!ofs.is_open()) {
       throw std::runtime_error("Failed to open output file");
-      ;
     }
     for (int i = 0; i < kActionsDim; ++i) {
       for (int j = 0; j < kFeaturesDim; ++j) {
-        ofs << weights_[i][j] << ",";
+        ofs << weights_[i][j];
+        if (j != kFeaturesDim - 1) {
+          ofs << ",";
+        }
       }
-      ofs << std::endl;
+      if (i != kActionsDim - 1) {
+        ofs << delimiter;
+      }
+    }
+    ofs << '\n';
+  }
+
+  void LoadModel(std::string_view fname, char delimiter = '\n') {
+    std::ifstream ifs(fname.data());
+    if (!ifs.is_open()) {
+      throw std::runtime_error("Failed to open input file");
+    }
+    for (int i = 0; i < kActionsDim; ++i) {
+      for (int j = 0; j < kFeaturesDim; ++j) {
+        ifs >> weights_[i][j];
+        if (ifs.peek() == ',') {
+          ifs.ignore();
+        }
+      }
+      if (ifs.peek() == delimiter) {
+        ifs.ignore();
+      }
     }
   }
+
  private:
   WeightsList weights_{};
   ResultsList results_{};
