@@ -1,6 +1,7 @@
 #ifndef MODELS_LINEAR_H
 #define MODELS_LINEAR_H
 #include <agent.h>
+#include <ostream>
 #include <random_generator.h>
 
 #include <array>
@@ -60,12 +61,14 @@ class SimpleLinearModel {
     }
 
     if (config.contains("learning_rate")) {
-      if (!config["learning_rate"].is_number()) {
+      if (config["learning_rate"].is_number()) {
         alpha_ = config["learning_rate"].get<double>();
       } else {
         throw std::runtime_error("Invalid learning_rate format in config JSON");
       }
     }
+
+    save_grad_ = static_cast<int>(config.value("save_grad", false));
   }
 
   const ResultsList &GetActionValues(const State &state) {
@@ -73,17 +76,59 @@ class SimpleLinearModel {
       double value_ = 0.0;
       for (int j = 0; j < kFeaturesDim; ++j) {
         value_ += weights_[i][j] * state[j];
+#ifdef DEBUG
+        std::cout << i << "," << j << "," << weights_[i][j] << std::endl;
+#endif
       }
       results_[i] = value_;
     }
     return results_;
   }
 
-  void Update(const State &state, int action_idx, double last_action_value,
-              double td_target) {
-    double error_ = td_target - last_action_value;
+  void Update(const State &state, int action_idx, double td_target) {
+    // auto last_q = GetActionValues(state)[action_idx];
+    auto last_q = GetActionValues(state)[action_idx];
+    double error_ = td_target - last_q;
+
+#ifdef DEBUG
+    std::cout << "grad " << action_idx << std::endl;
+#endif
     for (int j = 0; j < kFeaturesDim; ++j) {
+
+#ifdef DEBUG
+      std::cout << -error_ * state[j] << "\t";
+#endif
       weights_[action_idx][j] += alpha_ * error_ * state[j];
+    }
+
+#ifdef DEBUG
+    std::cout << std::endl;
+#endif
+    
+    if (save_grad_) {
+      std::ofstream ofs{"grad.txt",
+                        save_grad_ == 1 ? std::ios::out : std::ios::app};
+      if (save_grad_ == 1) {
+        save_grad_ = 2;
+      }
+      ofs << "state = ";
+      for (const auto &s : state) {
+        ofs << s << ",";
+      }
+      ofs << "; action_idx = " << action_idx << "; last_q = " << last_q
+          << "; new_q = " << td_target << "\n";
+      for (int i = 0; i < kActionsDim; ++i) {
+        Weight action_error = 0.0;
+        if (i == action_idx) {
+          action_error = error_;
+        }
+        for (int j = 0; j < kFeaturesDim; ++j) {
+          ofs << -action_error * state[j];
+          if (j < kFeaturesDim - 1) ofs << "\t";
+        }
+        ofs << '\n';
+      }
+      ofs << '\n';
     }
   }
 
@@ -131,6 +176,7 @@ class SimpleLinearModel {
   WeightsList weights_{};
   ResultsList results_{};
   double alpha_{1.0};
+  int save_grad_{};
 };
 }  // namespace RLlib::Models
 #endif

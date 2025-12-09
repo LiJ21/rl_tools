@@ -1,8 +1,9 @@
 #ifndef TRAINER_H
 #define TRAINER_H
 
-#include <extern/json.hpp>
 #include <extern/tinyexpr.h>
+
+#include <extern/json.hpp>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -12,19 +13,16 @@ using json = nlohmann::json;
 namespace RLlib {
 
 template <typename TModel>
-concept CModel =
-    requires(typename TModel::State state, TModel model, int action_idx,
-             double action_value, double td_target) {
-      {
-        model.GetActionValues(state)
-      } -> std::convertible_to<const typename TModel::ResultsList &>;
-      {
-        model.Update(state, action_idx, action_value, td_target)
-      } -> std::same_as<void>;
-      { model.SetLearningRate(0.1) } -> std::same_as<void>;
-      { model.OutputModel(std::string_view{}) } -> std::same_as<void>;
-      { model.LoadModel(std::string_view{}) } -> std::same_as<void>;
-    };
+concept CModel = requires(typename TModel::State state, TModel model,
+                          int action_idx, double td_target) {
+  {
+    model.GetActionValues(state)
+  } -> std::convertible_to<const typename TModel::ResultsList &>;
+  { model.Update(state, action_idx, td_target) } -> std::same_as<void>;
+  { model.SetLearningRate(0.1) } -> std::same_as<void>;
+  { model.OutputModel(std::string_view{}) } -> std::same_as<void>;
+  { model.LoadModel(std::string_view{}) } -> std::same_as<void>;
+};
 
 template <typename TAgent>
 concept CAgent = requires(TAgent agent, typename TAgent::State state,
@@ -47,10 +45,10 @@ class AgentBase {
     if (config.contains("learning_rates")) {
       if (config["learning_rates"].is_array()) {
         learning_rates_ = config["learning_rates"].get<std::vector<double>>();
-      } else if(config["learning_rates"].is_string()) {
+      } else if (config["learning_rates"].is_string()) {
         std::cout << "Using learning_rates formula: "
                   << config["learning_rates"].get<std::string>() << std::endl;
-        learning_rates_formula_ = config["learning_rates"].get<std::string>();  
+        learning_rates_formula_ = config["learning_rates"].get<std::string>();
       } else {
         throw std::runtime_error(
             "Invalid learning_rates format in config JSON");
@@ -68,15 +66,17 @@ class AgentBase {
       double round_double = static_cast<double>(round_);
       te_variable vars[] = {{"round", &round_double}};
       int err;
-      te_expr *expr = te_compile(learning_rates_formula_.c_str(), vars, 1, &err);
+      te_expr *expr =
+          te_compile(learning_rates_formula_.c_str(), vars, 1, &err);
       if (expr) {
         double lr = te_eval(expr);
         Derived().SetLearningRate(lr);
         te_free(expr);
       } else {
-        throw std::runtime_error("Failed to parse learning_rates formula at "
-                                 "position " +
-                                 std::to_string(err));
+        throw std::runtime_error(
+            "Failed to parse learning_rates formula at "
+            "position " +
+            std::to_string(err));
       }
     }
     Derived().UpdateStateImpl();
