@@ -4,8 +4,6 @@
 #include <chrono>
 #include <array>
 
-// Standard-library-only thread-local RNG utilities.
-// Usage: double x = rng_util::uniform01();
 namespace rng_util {
 
 inline std::mt19937_64 &engine() {
@@ -28,6 +26,12 @@ inline std::mt19937_64 &engine() {
 
 inline double uniform01() {
     thread_local std::uniform_real_distribution<double> dist(0.0, std::nextafter(1.0, 2.0));
+    return dist(engine());
+}
+
+
+inline double normal(double mean = 0.0, double stddev = 1.0) {
+    std::normal_distribution<double> dist(mean, stddev);
     return dist(engine());
 }
 

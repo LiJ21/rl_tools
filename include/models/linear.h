@@ -1,5 +1,8 @@
 #ifndef MODELS_LINEAR_H
 #define MODELS_LINEAR_H
+#include <agent.h>
+#include <random_generator.h>
+
 #include <array>
 #include <fstream>
 #include <iostream>
@@ -20,17 +23,49 @@ class SimpleLinearModel {
   using WeightsList = std::array<Weights, kActionsDim>;
   using ResultsList = std::array<Result, kActionsDim>;
 
-  SimpleLinearModel(double init_weight = 0.0) {
-    for (auto &weights : weights_) {
-      weights.fill(init_weight);
+  SimpleLinearModel() = default;
+  SimpleLinearModel(const json &config) {
+    if (config["weights"].is_array() &&
+        config["weights"].size() == kActionsDim) {
+      for (int i = 0; i < kActionsDim; ++i) {
+        if (config["weights"][i].is_array() &&
+            config["weights"][i].size() == kFeaturesDim) {
+          for (int j = 0; j < kFeaturesDim; ++j) {
+            weights_[i][j] = config["weights"][i][j].get<Weight>();
+          }
+        } else {
+          throw std::runtime_error("Invalid weights format in config JSON");
+        }
+      }
+    } else if (config["weights"].is_number()) {
+      Weight init_weight = config["weights"].get<Weight>();
+      for (auto &weights : weights_) {
+        weights.fill(init_weight);
+      }
+    } else if (config["weights"].is_object()) {
+      if (config["weights"].contains("mean") &&
+          config["weights"].contains("stddev")) {
+        Weight mean = config["weights"]["mean"].get<Weight>();
+        Weight stddev = config["weights"]["stddev"].get<Weight>();
+        for (auto &weights : weights_) {
+          for (auto &w : weights) {
+            w = static_cast<Weight>(rng_util::normal(mean, stddev));
+          }
+        }
+      } else {
+        throw std::runtime_error("Invalid weights format in config JSON");
+      }
+    } else {
+      throw std::runtime_error("Invalid weights format in config JSON");
     }
-  }
 
-  SimpleLinearModel(const WeightsList &init_weights) : weights_(init_weights) {}
-
-  template <typename... TWeights>
-  SimpleLinearModel(TWeights &&...init_weights) {
-    FillWeights(std::forward<TWeights>(init_weights)...);
+    if (config.contains("learning_rate")) {
+      if (!config["learning_rate"].is_number()) {
+        alpha_ = config["learning_rate"].get<double>();
+      } else {
+        throw std::runtime_error("Invalid learning_rate format in config JSON");
+      }
+    }
   }
 
   const ResultsList &GetActionValues(const State &state) {
@@ -96,15 +131,6 @@ class SimpleLinearModel {
   WeightsList weights_{};
   ResultsList results_{};
   double alpha_{1.0};
-
-  template <typename TFirst, typename... TRest>
-  void FillWeights(TFirst &&first, TRest &&...rest) {
-    static_assert(sizeof...(rest) + 1 <= kActionsDim,
-                  "Too many weight sets provided");
-    weights_[kActionsDim - sizeof...(rest) - 1] = std::forward<TFirst>(first);
-    if constexpr (sizeof...(rest) > 0)
-      FillWeights(std::forward<TRest>(rest)...);
-  }
 };
 }  // namespace RLlib::Models
 #endif

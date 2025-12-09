@@ -4,9 +4,36 @@
 #include <models/linear.h>
 #include <models/tabular.h>
 
+#include <extern/json.hpp>
+
+#include "random_generator.h"
+
 namespace RLlib {
 
-enum class SarsaTrainingMode { kOnPolicy = 0, kQLearning = 1 };
+inline json load_json(std::string_view filename) {
+  std::ifstream f(filename.data());
+  if (!f.is_open()) {
+    throw std::runtime_error(std::string{"Cannot open file: "} +
+                             filename.data());
+  }
+
+  json j;
+  f >> j;
+  return j;
+}
+enum class SarsaTrainingMode { kOnPolicy = 0, kQLearning = 1, kModesCount = 2 };
+
+constexpr const char *SarsaTrainingModeNames[] = {"on_policy", "q_learning"};
+
+inline enum SarsaTrainingMode NameToMode(std::string_view name) {
+  for (int i = 0; i < static_cast<int>(SarsaTrainingMode::kModesCount); ++i) {
+    if (name == SarsaTrainingModeNames[i]) {
+      return static_cast<SarsaTrainingMode>(i);
+    }
+  }
+  throw std::runtime_error("Invalid SarsaTrainingMode name");
+}
+
 template <typename TModel, typename TAction, typename TReward>
 class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
                                     TAction, TReward, typename TModel::State> {
@@ -28,6 +55,21 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
         gamma_(gamma),
         current_gamma_(1.0),
         model_(std::forward<TArgs>(args)...) {
+    static_assert(CModel<TModel>, "TModel must satisfy the CModel concept");
+  }
+
+  SarsaAgent(const ActionsList &actions, const char *config_file)
+      : SarsaAgent(actions, load_json(config_file)) {}
+
+  SarsaAgent(const ActionsList &actions, const json &config)
+      : Base(config),
+        actions_(actions),
+        epsilon_(config["epsilon"]),
+        gamma_(config.value("gamma", 1.0)),
+        steps_(config.value("steps", 1)),
+        training_mode_(NameToMode(config.value("training_mode", "on_policy"))),
+        current_gamma_(1.0),
+        model_(config["model"]) {
     static_assert(CModel<TModel>, "TModel must satisfy the CModel concept");
   }
 

@@ -1,0 +1,12 @@
+{
+  "Nstep": 200000,
+  "epsilon": 0.1,
+  "gamma": 0.5,
+  "steps": 1,
+  "training_mode": "q_learning",
+  "model": {
+    "weights": 0.0
+  },
+  "learning_rates": "(0.1 / (round + 1)) + 0.001",
+  "position_values_file": "inputs/grid.in"
+}

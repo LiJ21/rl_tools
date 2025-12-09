@@ -7,33 +7,43 @@
 constexpr int nrows = 5;
 constexpr int ncols = 6;
 constexpr int nstates = nrows * ncols;
+constexpr int nstate_dim = 5;
 constexpr int nactions = 4;
 
-using Direction = std::pair<int, int>;
-using Agent = RLlib::TabularSarsaAgent<nstates, nactions, Direction>;
+using Direction = std::array<int, 2>;
+using Agent = RLlib::LinearSarsaAgent<nstate_dim, nactions, Direction, int>;
+using State = typename Agent::State;
+using Position = std::array<int, 2>;
 using ActionsList = Agent::ActionsList;
 
-int main(int argc, char **argv) {
-  assert(argc > 3);
-  std::string fname = argv[1];
-  int Nstep = std::stoi(argv[2]);
-  int train_step = std::stoi(argv[3]);
-  double epsilon = std::stof(argv[4]);
+int main(int, char **argv) {
+  // assert(argc > 3);
+  // std::string fname = argv[1];
+  // int Nstep = std::stoi(argv[2]);
+  // int train_step = std::stoi(argv[3]);
+  // double epsilon = std::stof(argv[4]);
 
+  // Agent agent(ActionsList{Direction{1, 0}, Direction{0, 1}, Direction{-1, 0},
+  //                         Direction{0, -1}},
+  //             epsilon, 0.5, 0.0);
+  json config = RLlib::load_json(argv[1]);
+  
   Agent agent(ActionsList{Direction{1, 0}, Direction{0, 1}, Direction{-1, 0},
                           Direction{0, -1}},
-              epsilon, 0.5, 0.0);
-  agent.SetSteps(train_step);
+              config);
+  // agent.SetSteps(train_step);
 
-  std::array<double, nstates> state_values{};
+  auto Nstep = config["Nstep"].get<int>();
+  std::array<double, nstates> pos_values{};
   {
+    auto fname = config["position_values_file"].get<std::string>();
     std::ifstream ifs(fname);
     if (!ifs.is_open()) {
       std::cerr << "Failed to open input file: " << fname << std::endl;
       return 2;
     }
     for (int i = 0; i < nstates; ++i) {
-      ifs >> state_values[i];
+      ifs >> pos_values[i];
       if (ifs.fail()) {
         std::cerr << "Failed to read state value " << i << " from " << fname
                   << std::endl;
@@ -44,31 +54,33 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < nrows; ++i) {
     for (int j = 0; j < ncols; ++j) {
-      std::cout << state_values[i * ncols + j] << "\t";
+      std::cout << pos_values[i * ncols + j] << "\t";
     }
     std::cout << std::endl;
   }
 
-  auto loc = [](int x, int y) { return x * ncols + y; };
+  auto loc = [](const Position &pos) { return pos[0] * ncols + pos[1]; };
 
-  auto coords = [](int state) {
-    return std::make_pair(state / ncols, state % ncols);
-  };
-
-  int state = 0;
+  auto pos = Position{0, 0};
 
   std::vector<double> rewards(Nstep, 0.0);
-  std::vector<int> states(Nstep, 0);
-  agent.SetLearningRate(0.1);
+  std::vector<Position> positions(Nstep, {{}});
+  auto features = [](const Position &s) {
+    return State{s[0], s[1], s[0] * s[0], s[1] * s[1], s[1] * s[0]};
+  };
   for (int step = 0; step < Nstep; ++step) {
-    auto action = agent.UpdateState(state);
+    auto action = agent.UpdateState(features(pos));
 
-    state = loc((coords(state).first + action.first + nrows) % nrows,
-                (coords(state).second + action.second + ncols) % ncols);
-    // agent.SetLearningRate(0.1 / (step + 1));
-    auto reward = state_values[state];
+    for (int i = 0; i < 2; ++i) {
+      pos[i] = (pos[i] + action[i] + (i == 0 ? nrows : ncols)) %
+               (i == 0 ? nrows : ncols);
+    }
+
+    // agent.SetLearningRate(0.1 / (step + 1) + 0.001);
+    auto reward = pos_values[loc(pos)];
+
     rewards[step] = reward;
-    states[step] = state;
+    positions[step] = pos;
     agent.CollectReward(reward);
     agent.GetModel().OutputModel("./intermediate_model.txt", ',',
                                  step == 0 ? false : true);
@@ -95,11 +107,12 @@ int main(int argc, char **argv) {
       std::cerr << "Failed to open ./states.txt for writing" << std::endl;
       return 5;
     }
-    for (const auto &r : states) {
-      ofs << coords(r).first << "," << coords(r).second << std::endl;
+    for (const auto &r : positions) {
+      ofs << r[0] << "," << r[1] << std::endl;
     }
     ofs.close();
   }
   agent.GetModel().OutputModel("./trained_model.txt");
+
   return 0;
 }
