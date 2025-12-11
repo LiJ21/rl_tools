@@ -69,14 +69,30 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
         steps_(config.value("steps", 1)),
         training_mode_(NameToMode(config.value("training_mode", "on_policy"))),
         current_gamma_(1.0),
-        model_(config["model"]) {
+        model_(config["model"]),
+        debug_output_(config.value("debug_output", false)) {
     static_assert(CModel<TModel>, "TModel must satisfy the CModel concept");
   }
 
   void UpdateStateImpl() {
     int idx_best_ = 0;
+#ifdef DEBUG
+      std::cout << Base::round_ << ":" << std::endl;
+#endif
     auto action_values = model_.GetActionValues(Base::state_);
     double max_value_ = action_values[0];
+
+#ifdef DEBUG
+      std::cout << "state = ";
+      for (const auto &s : Base::state_) {
+        std::cout << s << ",";
+      }
+      std::cout << std::endl;
+      std::cout << "action-value = ";
+      for (int i = 0; i < kActionsDim; ++i) {
+        std::cout << action_values[i] << ",";  // debug
+      }
+#endif
 
     for (int i = 1; i < kActionsDim; ++i) {
       if (action_values[i] > max_value_) {
@@ -84,7 +100,9 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
         max_value_ = action_values[i];
       }
     }
-
+#ifdef DEBUG
+    std::cout << std::endl;
+#endif
     // epsilon greedy action selection
     int idx_result_{};
 
@@ -106,8 +124,7 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
     if (Base::round_ % steps_ == 0) {
       if (!is_first_round_) {
         target_ += current_gamma_ * (Base::reward_ + gamma_ * new_action_value);
-        model_.Update(last_state_, last_action_idx_, last_action_value_,
-                      target_);
+        model_.Update(last_state_, last_action_idx_, target_);
         target_ = 0.0;
       } else {
         is_first_round_ = false;
@@ -146,18 +163,9 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
   double target_{};
   size_t steps_{1};
   double current_gamma_{};
+  bool debug_output_{};
   SarsaTrainingMode training_mode_{SarsaTrainingMode::kOnPolicy};
 };
 
-template <int tFeaturesDim, int tActionsDim, typename TAction = double,
-          typename TFeature = double, typename TReward = double>
-using LinearSarsaAgent =
-    SarsaAgent<Models::SimpleLinearModel<tFeaturesDim, tActionsDim, TFeature>,
-               TAction, TReward>;
-
-template <int tStatesDim, int tActionsDim, typename TAction = int,
-          typename TReward = double>
-using TabularSarsaAgent =
-    SarsaAgent<Models::Tabular<tStatesDim, tActionsDim>, TAction, TReward>;
 }  // namespace RLlib
 #endif

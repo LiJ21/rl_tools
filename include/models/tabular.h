@@ -70,9 +70,8 @@ class Tabular {
     return action_values_[state];
   }
 
-  void Update(State state, int action_idx, double last_action_value,
-              double td_target) {
-    double error_ = td_target - last_action_value;
+  void Update(State state, int action_idx, double td_target) {
+    double error_ = td_target - action_values_[state][action_idx];
     action_values_[state][action_idx] += alpha_ * error_;
   }
 

@@ -1,5 +1,5 @@
-// #include <agents/sarsa.h>
-#include <linear_agents.h>
+// #include <torch_agents.h>
+#include <torch_agents.h>
 
 #include <cassert>
 #include <fstream>
@@ -12,27 +12,18 @@ constexpr int nstate_dim = 5;
 constexpr int nactions = 4;
 
 using Direction = std::array<int, 2>;
-using Agent = RLlib::LinearSarsaAgent<nstate_dim, nactions, Direction, int>;
+using Agent =
+    RLlib::OffPolicyLinearSarsaAgent<nstate_dim, nactions, Direction, double>;
 using State = typename Agent::State;
 using Position = std::array<int, 2>;
 using ActionsList = Agent::ActionsList;
 
 int main(int, char **argv) {
-  // assert(argc > 3);
-  // std::string fname = argv[1];
-  // int Nstep = std::stoi(argv[2]);
-  // int train_step = std::stoi(argv[3]);
-  // double epsilon = std::stof(argv[4]);
-
-  // Agent agent(ActionsList{Direction{1, 0}, Direction{0, 1}, Direction{-1, 0},
-  //                         Direction{0, -1}},
-  //             epsilon, 0.5, 0.0);
   json config = RLlib::load_json(argv[1]);
-  
+
   Agent agent(ActionsList{Direction{1, 0}, Direction{0, 1}, Direction{-1, 0},
                           Direction{0, -1}},
               config);
-  // agent.SetSteps(train_step);
 
   auto Nstep = config["Nstep"].get<int>();
   std::array<double, nstates> pos_values{};
@@ -67,9 +58,15 @@ int main(int, char **argv) {
   std::vector<double> rewards(Nstep, 0.0);
   std::vector<Position> positions(Nstep, {{}});
   auto features = [](const Position &s) {
-    return State{s[0], s[1], s[0] * s[0], s[1] * s[1], s[1] * s[0]};
+    return State{static_cast<double>(s[0]), static_cast<double>(s[1]),
+                 static_cast<double>(s[0] * s[0]),
+                 static_cast<double>(s[1] * s[1]),
+                 static_cast<double>(s[1] * s[0])};
   };
+  std::cout << "Initialization complete, run for " << Nstep << " steps."
+            << std::endl;
   for (int step = 0; step < Nstep; ++step) {
+    // std::cout << "step: " << step << std::endl;
     auto action = agent.UpdateState(features(pos));
 
     for (int i = 0; i < 2; ++i) {
