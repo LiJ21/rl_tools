@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.0)
 project(rl_tools)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CMAKE_PREFIX_PATH /Users/supermeng/my_py/lib/python3.13/site-packages/)
 find_package(Torch REQUIRED)
 
