@@ -110,3 +110,27 @@ Internally, the agent:
 
 ---
 
+## 🧱 Using RL Tools as a Header-Only Library
+
+Most of the core framework lives in the `include/` directory and is fully header-only.
+
+- If you only need **tabular agents** or **non-Torch models**,  
+  you may simply include the headers in your project and **ignore the `bin/` folder** entirely.
+
+- When using **Torch-based models** (e.g., neural function approximators),  
+  you must link your project with **LibTorch**.  
+  The rest of the code remains header-only and requires no additional build steps.
+
+Example CMake snippet for linking LibTorch:
+
+```cmake
+find_package(Torch REQUIRED)
+target_link_libraries(your_target PRIVATE Torch::Torch)
+```
+
+This makes RL Tools easy to embed into any project:
+- include only what you need,
+- link LibTorch only if you use neural models,
+- no need to build the entire framework unless you want the example binaries.
+
+---
