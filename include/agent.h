@@ -1,7 +1,7 @@
 #ifndef TRAINER_H
 #define TRAINER_H
 
-#include <extern/tinyexpr.h>
+#include <extern/miniexpr.h>
 
 #include <extern/json.hpp>
 #include <iostream>
@@ -53,6 +53,7 @@ class AgentBase {
             "Invalid learning_rates format in config JSON");
       }
     }
+    round_ = config.value("init_round", 0);
   }
 
   const Action &UpdateState(const State &state) {
@@ -63,20 +64,11 @@ class AgentBase {
           static_cast<size_t>(round_), learning_rates_.size() - 1)]);
     } else if (!learning_rates_formula_.empty()) {
       double round_double = static_cast<double>(round_);
-      te_variable vars[] = {{"round", &round_double}};
-      int err;
-      te_expr *expr =
-          te_compile(learning_rates_formula_.c_str(), vars, 1, &err);
-      if (expr) {
-        double lr = te_eval(expr);
-        Derived().SetLearningRate(lr);
-        te_free(expr);
-      } else {
-        throw std::runtime_error(
-            "Failed to parse learning_rates formula at "
-            "position " +
-            std::to_string(err));
-      }
+      mini_expr::Parser::Vars vars{
+          {"round", round_double},
+      };
+      double lr = mini_expr::eval(learning_rates_formula_, vars);
+      Derived().SetLearningRate(lr);
     }
     Derived().UpdateStateImpl();
 
