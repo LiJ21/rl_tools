@@ -3,8 +3,12 @@
   "epsilon": 0.1,
   "gamma": 0.5,
   "steps": 1,
+  "nrows": 5,
+  "ncols": 6,
   "training_mode": "on_policy",
   "model": {
+    "features_dim": 5,
+    "actions_dim": 4,
     "weights": 0.0,
     "_learning_rate": 0.1,
     "replay_capacity": 1,

@@ -21,9 +21,6 @@ class OffPolicyReplayLearner {
   using State = typename Net::State;
   using ResultsList = typename Net::ResultsList;
 
-  static constexpr int kFeaturesDim = Net::kFeaturesDim;
-  static constexpr int kActionsDim = Net::kActionsDim;
-
   struct Transition {
     State state;
     int action;
@@ -148,11 +145,11 @@ class OffPolicyReplayLearner {
     const auto optsL =
         torch::TensorOptions().dtype(torch::kLong).device(torch::kCPU);
 
-    torch::Tensor X = torch::empty({static_cast<long>(B), kFeaturesDim}, optsD);
+    torch::Tensor X = torch::empty({static_cast<long>(B), net_.FeaturesDim()}, optsD);
     {
       auto X_acc = X.accessor<double, 2>();
       for (std::size_t b = 0; b < B; ++b) {
-        for (int j = 0; j < kFeaturesDim; ++j) {
+        for (int j = 0; j < net_.FeaturesDim(); ++j) {
           X_acc[b][j] = static_cast<double>(states[b][j]);
         }
       }
@@ -247,10 +244,6 @@ class OffPolicyReplayLearner {
   std::vector<size_t> reshuffle_indices_;
   int save_grad_{};
 };
-
-template <int tFeaturesDim, int tActionsDim, typename TFeature>
-using OffPolicyReplayLinearModel = RLlib::Models::OffPolicyReplayLearner<
-    RLlib::Models::LinearQNetwork<tFeaturesDim, tActionsDim, TFeature>>;
 
 }  // namespace RLlib::Models
 

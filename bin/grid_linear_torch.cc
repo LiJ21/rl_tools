@@ -4,15 +4,9 @@
 #include <fstream>
 #include <iostream>
 
-constexpr int nrows = 5;
-constexpr int ncols = 6;
-constexpr int nstates = nrows * ncols;
-constexpr int nstate_dim = 5;
-constexpr int nactions = 4;
-
 using Direction = std::array<int, 2>;
 using Agent =
-    RLlib::OffPolicyLinearSarsaAgent<nstate_dim, nactions, Direction, double>;
+    RLlib::OffPolicyLinearSarsaAgent<Direction, double>;
 using State = typename Agent::State;
 using Position = std::array<int, 2>;
 using ActionsList = Agent::ActionsList;
@@ -23,9 +17,11 @@ int main(int, char **argv) {
   Agent agent(ActionsList{Direction{1, 0}, Direction{0, 1}, Direction{-1, 0},
                           Direction{0, -1}},
               config);
-
+  size_t nrows = config["nrows"];
+  size_t ncols = config["ncols"];
+  size_t nstates = nrows * ncols;
   auto Nstep = config["Nstep"].get<int>();
-  std::array<double, nstates> pos_values{};
+  std::vector<double> pos_values(nstates, {});
   {
     auto fname = config["position_values_file"].get<std::string>();
     std::ifstream ifs(fname);
@@ -50,7 +46,7 @@ int main(int, char **argv) {
     std::cout << std::endl;
   }
 
-  auto loc = [](const Position &pos) { return pos[0] * ncols + pos[1]; };
+  auto loc = [&](const Position &pos) { return pos[0] * ncols + pos[1]; };
 
   auto pos = Position{0, 0};
 

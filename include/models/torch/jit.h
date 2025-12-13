@@ -13,17 +13,13 @@
 
 namespace RLlib::Models {
 
-template <int tFeaturesDim, int tActionsDim, typename TFeature = double,
-          typename TResult = double>
+template <typename TFeature = double, typename TResult = double>
 class JITNetwork : public torch::nn::Module {
  public:
-  static constexpr int kFeaturesDim = tFeaturesDim;
-  static constexpr int kActionsDim = tActionsDim;
-
   using Feature = TFeature;
   using Result = TResult;
-  using State = std::array<Feature, kFeaturesDim>;
-  using ResultsList = std::array<Result, kActionsDim>;
+  using State = std::vector<Feature>;
+  using ResultsList = std::vector<Result>;
 
   explicit JITNetwork(const json &config) {
     if (!config.contains("model_path") || !config["model_path"].is_string()) {
@@ -40,7 +36,18 @@ class JITNetwork : public torch::nn::Module {
                                "\": " + e.what());
     }
 
-    results_.fill(Result{0});
+    if (model_.hasattr("features_dim")) {
+      features_dim = model_.attr("features_dim").toInt();
+    } else {
+      features_dim = config["features_dim"];
+    }
+
+    if (model_.hasattr("actions_dim")) {
+      actions_dim = model_.attr("actions_dim").toInt();
+    } else {
+      actions_dim = config["actions_dim"];
+    }
+    results_.resize(ActionsDim(), {});
   }
 
   torch::Tensor forward(const torch::Tensor &X) {
@@ -58,7 +65,7 @@ class JITNetwork : public torch::nn::Module {
     auto perform_forward = [&]() {
       auto input =
           torch::from_blob(const_cast<Feature *>(state.data()),
-                           std::array<int64_t, 2>{1, kFeaturesDim}, opts);
+                           std::array<int64_t, 2>{1, FeaturesDim()}, opts);
 
       std::vector<torch::jit::IValue> inputs;
       inputs.emplace_back(input);
@@ -68,7 +75,7 @@ class JITNetwork : public torch::nn::Module {
       auto q_cpu = q.to(torch::kCPU);
       auto acc = q_cpu.template accessor<TResult, 1>();
 
-      for (int i = 0; i < kActionsDim; ++i) {
+      for (int i = 0; i < ActionsDim(); ++i) {
         results_[i] = acc[i];
       }
     };
@@ -104,12 +111,14 @@ class JITNetwork : public torch::nn::Module {
     model_ = torch::jit::load(std::string(fname));
   }
 
-  static constexpr int ActionsDim() { return kActionsDim; }
-  static constexpr int FeaturesDim() { return kFeaturesDim; }
+  int ActionsDim() { return actions_dim; }
+  int FeaturesDim() { return features_dim; }
 
  private:
   torch::jit::script::Module model_;
   ResultsList results_{};
+  size_t actions_dim{};
+  size_t features_dim{};
 };
 
 }  // namespace RLlib::Models

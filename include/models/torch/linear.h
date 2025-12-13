@@ -13,32 +13,25 @@
 
 namespace RLlib::Models {
 
-template <int tFeaturesDim, int tActionsDim, typename TFeature = double,
-          typename TResult = double>
+template <typename TFeature = double, typename TResult = double>
 class LinearQNetwork : public torch::nn::Module {
  public:
-  static constexpr int kFeaturesDim = tFeaturesDim;
-  static constexpr int kActionsDim = tActionsDim;
 
   using Feature = TFeature;
   using Result = TResult;
-  using State = std::array<Feature, kFeaturesDim>;
-  using ResultsList = std::array<Result, kActionsDim>;
+  using State = std::vector<Feature>;
+  using ResultsList = std::vector<Result>;
 
-  LinearQNetwork() : linear_(nullptr) {
-    static_assert(kFeaturesDim > 0, "kFeaturesDim must be > 0");
-    static_assert(kActionsDim > 0, "kActionsDim must be > 0");
+  explicit LinearQNetwork(const json &config) {
+    auto features_dim = config["features_dim"];
+    auto actions_dim = config["actions_dim"];
 
     linear_ = register_module(
         "linear",
         torch::nn::Linear(
-            torch::nn::LinearOptions(kFeaturesDim, kActionsDim).bias(false)));
-
+            torch::nn::LinearOptions(features_dim, actions_dim).bias(false)));
+    results_.resize(actions_dim, {});
     linear_->to(torch::CppTypeToScalarType<Feature>::value);
-    results_.fill(Result{0});
-  }
-
-  explicit LinearQNetwork(const json &config) : LinearQNetwork() {
     if (!config.contains("weights")) {
       throw std::runtime_error("Missing 'weights' in config JSON");
     }
@@ -50,6 +43,7 @@ class LinearQNetwork : public torch::nn::Module {
   torch::Tensor forward(const torch::Tensor &X) { return linear_->forward(X); }
 
   const ResultsList &GetActionValues(const State &state, bool semigrad = true) {
+    assert(state.size() == FeaturesDim());
     auto dtype = torch::CppTypeToScalarType<TFeature>::value;
     const auto opts = torch::TensorOptions().dtype(
         torch::CppTypeToScalarType<Feature>::value);
@@ -57,17 +51,18 @@ class LinearQNetwork : public torch::nn::Module {
 #ifdef DEBUG
     const auto W = linear_->weight.detach().to(torch::kCPU);
     const auto acc = W.accessor<double, 2>();
-    for (int i = 0; i < kActionsDim; ++i) {
-      for (int j = 0; j < kFeaturesDim; ++j) {
+    for (int i = 0; i < ActionsDim(); ++i) {
+      for (int j = 0; j < FeaturesDim(); ++j) {
         std::cout << i << "," << j << "," << acc[i][j] << std::endl;
       }
     }
 #endif
 
     auto eval_forward = [&]() {
-      auto input =
-          torch::from_blob(const_cast<Feature *>(state.data()),
-                           std::array<int64_t, 2>{1, kFeaturesDim}, opts);
+      auto input = torch::from_blob(
+          const_cast<Feature *>(state.data()),
+          std::array<int64_t, 2>{1, static_cast<long long>(state.size())},
+          opts);
 
       auto output = linear_->forward(input);
       auto q = output.squeeze(0);
@@ -75,7 +70,7 @@ class LinearQNetwork : public torch::nn::Module {
       auto q_cpu = q.to(torch::kCPU);
       auto q_acc = q_cpu.template accessor<Result, 1>();
 
-      for (int i = 0; i < kActionsDim; ++i) {
+      for (int i = 0; i < results_.size(); ++i) {
         results_[i] = static_cast<Result>(q_acc[i]);
       }
     };
@@ -102,14 +97,14 @@ class LinearQNetwork : public torch::nn::Module {
     const auto W = linear_->weight.detach().to(torch::kCPU);
     const auto acc = W.accessor<double, 2>();
 
-    for (int i = 0; i < kActionsDim; ++i) {
-      for (int j = 0; j < kFeaturesDim; ++j) {
+    for (int i = 0; i < ActionsDim(); ++i) {
+      for (int j = 0; j < FeaturesDim(); ++j) {
         ofs << acc[i][j];
-        if (j != kFeaturesDim - 1) {
+        if (j != FeaturesDim() - 1) {
           ofs << ",";
         }
       }
-      if (i != kActionsDim - 1) {
+      if (i != ActionsDim() - 1) {
         ofs << delimiter;
       }
     }
@@ -129,8 +124,8 @@ class LinearQNetwork : public torch::nn::Module {
 
     auto &W = linear_->weight;
 
-    for (int i = 0; i < kActionsDim; ++i) {
-      for (int j = 0; j < kFeaturesDim; ++j) {
+    for (int i = 0; i < ActionsDim(); ++i) {
+      for (int j = 0; j < FeaturesDim(); ++j) {
         double v;
         if (!(ifs >> v)) {
           throw std::runtime_error("Failed to read weight at position [" +
@@ -139,7 +134,7 @@ class LinearQNetwork : public torch::nn::Module {
         }
         W.index_put_({i, j}, v);
 
-        if (j != kFeaturesDim - 1) {
+        if (j != FeaturesDim() - 1) {
           char sep;
           if (ifs >> sep && sep != ',') {
             throw std::runtime_error("Expected ',' separator at position [" +
@@ -149,7 +144,7 @@ class LinearQNetwork : public torch::nn::Module {
         }
       }
 
-      if (i != kActionsDim - 1 && delimiter != '\n') {
+      if (i != ActionsDim() - 1 && delimiter != '\n') {
         char sep;
         if (ifs >> sep && sep != delimiter) {
           throw std::runtime_error("Expected delimiter after row " +
@@ -159,8 +154,8 @@ class LinearQNetwork : public torch::nn::Module {
     }
   }
 
-  static constexpr int ActionsDim() { return kActionsDim; }
-  static constexpr int FeaturesDim() { return kFeaturesDim; }
+  int ActionsDim() const { return linear_->weight.size(0); }
+  int FeaturesDim() const { return linear_->weight.size(1); }
 
   using ModuleType = LinearQNetwork;
 
@@ -171,20 +166,20 @@ class LinearQNetwork : public torch::nn::Module {
     auto &W = linear_->weight;
 
     if (w_cfg.is_array()) {
-      if (w_cfg.size() != kActionsDim) {
+      if (w_cfg.size() != ActionsDim()) {
         throw std::runtime_error(
             "weights array size " + std::to_string(w_cfg.size()) +
-            " does not match kActionsDim " + std::to_string(kActionsDim));
+            " does not match ActionsDim " + std::to_string(ActionsDim()));
       }
 
-      for (int i = 0; i < kActionsDim; ++i) {
-        if (!w_cfg[i].is_array() || w_cfg[i].size() != kFeaturesDim) {
+      for (int i = 0; i < ActionsDim(); ++i) {
+        if (!w_cfg[i].is_array() || w_cfg[i].size() != FeaturesDim()) {
           throw std::runtime_error("weights[" + std::to_string(i) + "] size " +
                                    std::to_string(w_cfg[i].size()) +
-                                   " does not match kFeaturesDim " +
-                                   std::to_string(kFeaturesDim));
+                                   " does not match FeaturesDim " +
+                                   std::to_string(FeaturesDim()));
         }
-        for (int j = 0; j < kFeaturesDim; ++j) {
+        for (int j = 0; j < FeaturesDim(); ++j) {
           if (!w_cfg[i][j].is_number()) {
             throw std::runtime_error("weights[" + std::to_string(i) + "][" +
                                      std::to_string(j) + "] is not a number");
@@ -206,7 +201,7 @@ class LinearQNetwork : public torch::nn::Module {
         if (stddev < 0.0) {
           throw std::runtime_error("weights stddev must be non-negative");
         }
-        auto randW = torch::randn({kActionsDim, kFeaturesDim}, opts);
+        auto randW = torch::randn({ActionsDim(), FeaturesDim()}, opts);
         W.data().copy_(randW * stddev + mean);
       } else {
         throw std::runtime_error(

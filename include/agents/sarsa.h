@@ -38,13 +38,12 @@ template <typename TModel, typename TAction, typename TReward>
 class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
                                     TAction, TReward, typename TModel::State> {
  public:
-  static constexpr int kActionsDim = TModel::kActionsDim;
   using Model = TModel;
   using Base = AgentBase<SarsaAgent<TModel, TAction, TReward>, TAction, TReward,
                          typename TModel::State>;
   using State = typename Model::State;
   using Action = TAction;
-  using ActionsList = std::array<Action, kActionsDim>;
+  using ActionsList = std::vector<Action>;
   using Reward = TReward;
 
   template <typename... TArgs>
@@ -93,8 +92,9 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
         std::cout << action_values[i] << ",";  // debug
       }
 #endif
-
-    for (int i = 1; i < kActionsDim; ++i) {
+    auto action_dim = action_values.size();
+    assert(action_dim == actions_.size());
+    for (int i = 1; i < action_dim; ++i) {
       if (action_values[i] > max_value_) {
         idx_best_ = i;
         max_value_ = action_values[i];
@@ -108,7 +108,7 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
 
     if (rng_util::uniform01() < epsilon_) {
       int idx_random_ =
-          static_cast<int>(rng_util::uniform01() * (kActionsDim - 1));
+          static_cast<int>(rng_util::uniform01() * (action_dim - 1));
       idx_result_ = idx_random_ < idx_best_ ? idx_random_ : idx_random_ + 1;
     } else {
       idx_result_ = idx_best_;
