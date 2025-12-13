@@ -66,7 +66,6 @@ int main(int, char **argv) {
   std::cout << "Initialization complete, run for " << Nstep << " steps."
             << std::endl;
   for (int step = 0; step < Nstep; ++step) {
-    // std::cout << "step: " << step << std::endl;
     auto action = agent.UpdateState(features(pos));
 
     for (int i = 0; i < 2; ++i) {
@@ -74,14 +73,11 @@ int main(int, char **argv) {
                (i == 0 ? nrows : ncols);
     }
 
-    // agent.SetLearningRate(0.1 / (step + 1) + 0.001);
     auto reward = pos_values[loc(pos)];
 
     rewards[step] = reward;
     positions[step] = pos;
     agent.CollectReward(reward);
-    // agent.GetModel().OutputModel("./intermediate_model.txt", ',',
-    //                              step == 0 ? false : true);
   }
 
   std::cout << "Finished " << Nstep << " steps." << std::endl;

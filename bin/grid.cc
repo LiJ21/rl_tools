@@ -1,4 +1,3 @@
-// #include <agents/sarsa.h>
 #include <tabular_agents.h>
 
 #include <cassert>
@@ -15,18 +14,11 @@ using Agent = RLlib::TabularSarsaAgent<nstates, nactions, Direction>;
 using ActionsList = Agent::ActionsList;
 
 int main(int, char **argv) {
-  // assert(argc > 3);
-  // std::string fname = argv[1];
-  // int Nstep = std::stoi(argv[2]);
-  // int train_step = std::stoi(argv[3]);
-  // double epsilon = std::stof(argv[4]);
   auto config = RLlib::load_json(argv[1]);
 
   Agent agent(ActionsList{Direction{1, 0}, Direction{0, 1}, Direction{-1, 0},
                           Direction{0, -1}},
-              // epsilon, 0.5, 0.0);
               config);
-  // agent.SetSteps(train_step);
   auto Nstep = config["Nstep"].get<int>();
   std::array<double, nstates> state_values{};
   {
@@ -63,13 +55,11 @@ int main(int, char **argv) {
 
   std::vector<double> rewards(Nstep, 0.0);
   std::vector<int> states(Nstep, 0);
-  // agent.SetLearningRate(0.1);
   for (int step = 0; step < Nstep; ++step) {
     auto action = agent.UpdateState(state);
 
     state = loc((coords(state).first + action.first + nrows) % nrows,
                 (coords(state).second + action.second + ncols) % ncols);
-    // agent.SetLearningRate(0.1 / (step + 1));
     auto reward = state_values[state];
     rewards[step] = reward;
     states[step] = state;

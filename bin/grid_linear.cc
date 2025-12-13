@@ -1,4 +1,3 @@
-// #include <agents/sarsa.h>
 #include <linear_agents.h>
 
 #include <cassert>
@@ -18,21 +17,11 @@ using Position = std::array<int, 2>;
 using ActionsList = Agent::ActionsList;
 
 int main(int, char **argv) {
-  // assert(argc > 3);
-  // std::string fname = argv[1];
-  // int Nstep = std::stoi(argv[2]);
-  // int train_step = std::stoi(argv[3]);
-  // double epsilon = std::stof(argv[4]);
-
-  // Agent agent(ActionsList{Direction{1, 0}, Direction{0, 1}, Direction{-1, 0},
-  //                         Direction{0, -1}},
-  //             epsilon, 0.5, 0.0);
   json config = RLlib::load_json(argv[1]);
   
   Agent agent(ActionsList{Direction{1, 0}, Direction{0, 1}, Direction{-1, 0},
                           Direction{0, -1}},
               config);
-  // agent.SetSteps(train_step);
 
   auto Nstep = config["Nstep"].get<int>();
   std::array<double, nstates> pos_values{};
@@ -77,7 +66,6 @@ int main(int, char **argv) {
                (i == 0 ? nrows : ncols);
     }
 
-    // agent.SetLearningRate(0.1 / (step + 1) + 0.001);
     auto reward = pos_values[loc(pos)];
 
     rewards[step] = reward;
