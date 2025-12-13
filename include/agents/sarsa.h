@@ -126,6 +126,7 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
         target_ += current_gamma_ * (Base::reward_ + gamma_ * new_action_value);
         model_.Update(last_state_, last_action_idx_, target_);
         target_ = 0.0;
+        current_gamma_ = gamma_;
       } else {
         is_first_round_ = false;
       }

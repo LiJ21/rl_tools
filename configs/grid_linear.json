@@ -2,7 +2,7 @@
   "Nstep": 200000,
   "epsilon": 0.1,
   "gamma": 0.5,
-  "steps": 1,
+  "steps": 2,
   "training_mode": "on_policy",
   "model": {
     "weights": 0.0,
