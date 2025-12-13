@@ -1,4 +1,4 @@
-# RL Tools — A Lightweight Reinforcement Learning Framework
+# RL Tools — A Lightweight Reinforcement Learning Framework in C++
 
 ## 🚀 Build Instructions
 
