@@ -34,7 +34,7 @@ class LinearQNetwork : public torch::nn::Module {
         torch::nn::Linear(
             torch::nn::LinearOptions(kFeaturesDim, kActionsDim).bias(false)));
 
-    linear_->to(torch::kFloat64);
+    linear_->to(torch::CppTypeToScalarType<Feature>::value);
     results_.fill(Result{0});
   }
 
@@ -50,12 +50,13 @@ class LinearQNetwork : public torch::nn::Module {
   torch::Tensor forward(const torch::Tensor &X) { return linear_->forward(X); }
 
   const ResultsList &GetActionValues(const State &state, bool semigrad = true) {
-    const auto opts = torch::TensorOptions().dtype(torch::kFloat64);
-
-    const auto W = linear_->weight.detach().to(torch::kCPU);
-    const auto acc = W.accessor<double, 2>();
+    auto dtype = torch::CppTypeToScalarType<TFeature>::value;
+    const auto opts = torch::TensorOptions().dtype(
+        torch::CppTypeToScalarType<Feature>::value);
 
 #ifdef DEBUG
+    const auto W = linear_->weight.detach().to(torch::kCPU);
+    const auto acc = W.accessor<double, 2>();
     for (int i = 0; i < kActionsDim; ++i) {
       for (int j = 0; j < kFeaturesDim; ++j) {
         std::cout << i << "," << j << "," << acc[i][j] << std::endl;
@@ -165,7 +166,8 @@ class LinearQNetwork : public torch::nn::Module {
 
  private:
   void InitializeWeights(const json &w_cfg) {
-    const auto opts = torch::TensorOptions().dtype(torch::kFloat64);
+    const auto opts = torch::TensorOptions().dtype(
+        torch::CppTypeToScalarType<Feature>::value);
     auto &W = linear_->weight;
 
     if (w_cfg.is_array()) {
