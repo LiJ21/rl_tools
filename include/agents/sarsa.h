@@ -43,8 +43,13 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
                          typename TModel::State>;
   using State = typename Model::State;
   using Action = TAction;
+  using ActionParam = typename Model::ActionParam;
   using ActionsList = std::vector<Action>;
   using Reward = TReward;
+
+  static_assert(std::integral<ActionParam>,
+                "SarsaAgent requires an integral ActionParam because "
+                "GetActionValues is an indexed discrete-action interface");
 
   template <typename... TArgs>
   SarsaAgent(const ActionsList &actions, double epsilon, double gamma,
@@ -113,6 +118,8 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
     } else {
       idx_result_ = idx_best_;
     }
+    const ActionParam action_param =
+        static_cast<ActionParam>(idx_result_);
     Base::action_ = actions_[idx_result_];
     double new_action_value{};
     if (training_mode_ == SarsaTrainingMode::kQLearning) {
@@ -124,7 +131,7 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
     if (Base::round_ % steps_ == 0) {
       if (!is_first_round_) {
         target_ += current_gamma_ * (Base::reward_ + gamma_ * new_action_value);
-        model_.Update(last_state_, last_action_idx_, target_);
+        model_.Update(last_state_, last_action_param_, target_);
         target_ = 0.0;
         current_gamma_ = gamma_;
       } else {
@@ -132,7 +139,7 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
       }
 
       last_state_ = Base::state_;
-      last_action_idx_ = idx_result_;
+      last_action_param_ = action_param;
       last_action_value_ = action_values[idx_result_];
     } else {
       target_ += current_gamma_ * Base::reward_;
@@ -157,7 +164,7 @@ class SarsaAgent : public AgentBase<SarsaAgent<TModel, TAction, TReward>,
   const ActionsList actions_;
   double epsilon_;
   State last_state_{};
-  int last_action_idx_ = -1;
+  ActionParam last_action_param_{};
   double last_action_value_ = 0.0;
   double gamma_;
   bool is_first_round_ = true;

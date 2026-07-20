@@ -98,6 +98,28 @@ Internally, the agent:
 - updates the model (tabular or neural network)  
 - selects the next action using epsilon-greedy  
 
+For episodic policy-gradient agents, close each path after collecting its final
+reward:
+
+```cpp
+agent.TerminatePath();                  // genuine terminal: bootstrap value is zero
+agent.TerminatePath(final_state);       // truncation: bootstrap from V(final_state)
+agent.FlushBatch();                     // learn from a final partial PPO batch
+```
+
+Agents that do not implement path termination retain their existing behavior;
+the base implementation is a no-op. PPO path termination records a GAE
+boundary but does not force an update; completed paths accumulate until
+`batch_steps` transitions have been collected. `FlushBatch` is only needed
+when training ends with a partial batch.
+
+PPO models define the probability-bearing action representation through
+`Model::ActionParam`. A generic `PPOAgent` maps that parameter to the
+environment action with an action mapper; `DiscretePPOAgent` is the convenience
+wrapper where an integral parameter indexes a fixed action list. PPO batches
+retain `ActionParam` values so the model can recompute their policy
+log-probabilities during `LearnFromBatch`.
+
 ---
 
 ## 📝 Notes

@@ -16,6 +16,7 @@ class Tabular {
   static constexpr int kStatesDim = tStatesDim;
   using State = int;
   using Action = int;
+  using ActionParam = int;
   using Reward = double;
   using ResultsList = std::array<double, kActionsDim>;
   using QType = std::array<ResultsList, kStatesDim>;
@@ -70,9 +71,9 @@ class Tabular {
     return action_values_[state];
   }
 
-  void Update(State state, int action_idx, double td_target) {
-    double error_ = td_target - action_values_[state][action_idx];
-    action_values_[state][action_idx] += alpha_ * error_;
+  void Update(State state, const ActionParam &action_param, double td_target) {
+    double error_ = td_target - action_values_[state][action_param];
+    action_values_[state][action_param] += alpha_ * error_;
   }
 
   void SetLearningRate(double alpha) { alpha_ = alpha; }

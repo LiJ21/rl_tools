@@ -4,7 +4,11 @@
 #include <extern/miniexpr.h>
 
 #include <extern/json.hpp>
+#include <algorithm>
+#include <concepts>
 #include <iostream>
+#include <string>
+#include <string_view>
 #include <vector>
 
 using json = nlohmann::json;
@@ -13,11 +17,12 @@ namespace RLlib {
 
 template <typename TModel>
 concept CModel = requires(typename TModel::State state, TModel model,
-                          int action_idx, double td_target) {
+                          const typename TModel::ActionParam &action_param,
+                          double td_target) {
   {
     model.GetActionValues(state)
   } -> std::convertible_to<const typename TModel::ResultsList &>;
-  { model.Update(state, action_idx, td_target) } -> std::same_as<void>;
+  { model.Update(state, action_param, td_target) } -> std::same_as<void>;
   { model.SetLearningRate(0.1) } -> std::same_as<void>;
   { model.OutputModel(std::string_view{}) } -> std::same_as<void>;
   { model.LoadModel(std::string_view{}) } -> std::same_as<void>;
@@ -81,6 +86,24 @@ class AgentBase {
     if (round != round_ && round != -1) return false;
     reward_ = reward;
     return true;
+  }
+
+  // Finish a genuine terminal path. Agents that do not provide a
+  // TerminatePathImpl hook retain their existing behavior.
+  void TerminatePath() {
+    if constexpr (requires(TDerived &agent) { agent.TerminatePathImpl(); }) {
+      Derived().TerminatePathImpl();
+    }
+  }
+
+  // Finish a truncated path and allow agents to bootstrap from its final
+  // observation. This is also a no-op unless the derived agent opts in.
+  void TerminatePath(const State &final_state) {
+    if constexpr (requires(TDerived &agent, const State &state) {
+                    agent.TerminatePathImpl(state);
+                  }) {
+      Derived().TerminatePathImpl(final_state);
+    }
   }
 
   void SetLearningRates(const std::vector<double> &learning_rates) {

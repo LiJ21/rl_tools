@@ -19,11 +19,12 @@ class OffPolicyReplayLearner {
  public:
   using Network = Net;
   using State = typename Net::State;
+  using ActionParam = typename Net::ActionParam;
   using ResultsList = typename Net::ResultsList;
 
   struct Transition {
     State state;
-    int action;
+    ActionParam action_param;
     double td_target;
   };
 
@@ -35,6 +36,8 @@ class OffPolicyReplayLearner {
         batch_size_(config.value("batch_size", static_cast<std::size_t>(32))),
         rng_(std::random_device{}()),
         save_grad_{static_cast<int>(config.value("save_grad", false))} {
+    static_assert(std::integral<ActionParam>,
+                  "OffPolicyReplayLearner requires an integral ActionParam");
     if (batch_size_ == 0) {
       throw std::runtime_error("batch_size must be > 0");
     }
@@ -44,7 +47,7 @@ class OffPolicyReplayLearner {
     replay_buffer_.reserve(replay_capacity_);
 
     batch_states_.reserve(batch_size_);
-    batch_actions_.reserve(batch_size_);
+    batch_action_params_.reserve(batch_size_);
     batch_targets_.reserve(batch_size_);
     reshuffle_indices_.reserve(replay_capacity_);
 
@@ -67,8 +70,9 @@ class OffPolicyReplayLearner {
     return net_.GetActionValues(state);
   }
 
-  void Update(const State &state, int action_idx, double td_target) {
-    PushTransition(state, action_idx, td_target);
+  void Update(const State &state, const ActionParam &action_param,
+              double td_target) {
+    PushTransition(state, action_param, td_target);
     if (replay_buffer_.size() >= batch_size_) {
       TrainFromReplay();
     }
@@ -100,11 +104,13 @@ class OffPolicyReplayLearner {
   const Network &GetNet() const { return net_; }
 
  private:
-  void PushTransition(const State &state, int action, double td_target) {
+  void PushTransition(const State &state, const ActionParam &action_param,
+                      double td_target) {
     if (replay_buffer_.size() < replay_capacity_) {
-      replay_buffer_.push_back(Transition{state, action, td_target});
+      replay_buffer_.push_back(Transition{state, action_param, td_target});
     } else {
-      replay_buffer_[replay_pos_] = Transition{state, action, td_target};
+      replay_buffer_[replay_pos_] =
+          Transition{state, action_param, td_target};
     }
     replay_pos_ = (replay_pos_ + 1) % replay_capacity_;
   }
@@ -118,25 +124,25 @@ class OffPolicyReplayLearner {
     std::shuffle(reshuffle_indices_.begin(), reshuffle_indices_.end(), rng_);
 
     batch_states_.clear();
-    batch_actions_.clear();
+    batch_action_params_.clear();
     batch_targets_.clear();
 
     for (std::size_t i = 0; i < batch_size_; ++i) {
       const auto &tr = replay_buffer_[reshuffle_indices_[i]];
       batch_states_.push_back(tr.state);
-      batch_actions_.push_back(tr.action);
+      batch_action_params_.push_back(tr.action_param);
       batch_targets_.push_back(tr.td_target);
     }
 
-    UpdateMinibatch(batch_states_, batch_actions_, batch_targets_);
+    UpdateMinibatch(batch_states_, batch_action_params_, batch_targets_);
   }
 
   void UpdateMinibatch(const std::vector<State> &states,
-                       const std::vector<int> &actions,
+                       const std::vector<ActionParam> &action_params,
                        const std::vector<double> &td_targets) {
     const std::size_t B = states.size();
     if (B == 0) return;
-    if (actions.size() != B || td_targets.size() != B) {
+    if (action_params.size() != B || td_targets.size() != B) {
       throw std::runtime_error("Minibatch vectors must have the same size");
     }
 
@@ -159,7 +165,7 @@ class OffPolicyReplayLearner {
     {
       auto A_acc = A.accessor<int64_t, 1>();
       for (std::size_t b = 0; b < B; ++b) {
-        A_acc[b] = static_cast<int64_t>(actions[b]);
+        A_acc[b] = static_cast<int64_t>(action_params[b]);
       }
     }
 
@@ -195,8 +201,8 @@ class OffPolicyReplayLearner {
         for (const auto &is : s) grad_file << is << ",";
         grad_file << "|";
       }
-      grad_file << "; action_idx = ";
-      for (const auto &a : actions) {
+      grad_file << "; action_param = ";
+      for (const auto &a : action_params) {
         grad_file << a << ",";
       }
       auto Q_a_cpu = Q_a.detach().to(torch::kCPU);
@@ -239,7 +245,7 @@ class OffPolicyReplayLearner {
   std::size_t replay_pos_{0};
   std::minstd_rand rng_;
   std::vector<State> batch_states_;
-  std::vector<int> batch_actions_;
+  std::vector<ActionParam> batch_action_params_;
   std::vector<double> batch_targets_;
   std::vector<size_t> reshuffle_indices_;
   int save_grad_{};

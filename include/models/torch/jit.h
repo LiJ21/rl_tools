@@ -19,6 +19,7 @@ class JITNetwork : public torch::nn::Module {
   using Feature = TFeature;
   using Result = TResult;
   using State = std::vector<Feature>;
+  using ActionParam = int;
   using ResultsList = std::vector<Result>;
 
   explicit JITNetwork(const json &config) {

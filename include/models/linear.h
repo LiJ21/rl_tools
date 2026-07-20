@@ -19,6 +19,7 @@ class SimpleLinearModel {
   using Feature = TFeature;
   using Result = TResult;
   using State = std::array<Feature, kFeaturesDim>;
+  using ActionParam = int;
   using Weight = TWeight;
   using Weights = std::array<Weight, kFeaturesDim>;
   using WeightsList = std::array<Weights, kActionsDim>;
@@ -85,20 +86,20 @@ class SimpleLinearModel {
     return results_;
   }
 
-  void Update(const State &state, int action_idx, double td_target) {
-    // auto last_q = GetActionValues(state)[action_idx];
-    auto last_q = GetActionValues(state)[action_idx];
+  void Update(const State &state, const ActionParam &action_param,
+              double td_target) {
+    auto last_q = GetActionValues(state)[action_param];
     double error_ = td_target - last_q;
 
 #ifdef DEBUG
-    std::cout << "grad " << action_idx << std::endl;
+    std::cout << "grad " << action_param << std::endl;
 #endif
     for (int j = 0; j < kFeaturesDim; ++j) {
 
 #ifdef DEBUG
       std::cout << -error_ * state[j] << "\t";
 #endif
-      weights_[action_idx][j] += alpha_ * error_ * state[j];
+      weights_[action_param][j] += alpha_ * error_ * state[j];
     }
 
 #ifdef DEBUG
@@ -115,11 +116,11 @@ class SimpleLinearModel {
       for (const auto &s : state) {
         ofs << s << ",";
       }
-      ofs << "; action_idx = " << action_idx << "; last_q = " << last_q
+      ofs << "; action_param = " << action_param << "; last_q = " << last_q
           << "; new_q = " << td_target << "\n";
       for (int i = 0; i < kActionsDim; ++i) {
         Weight action_error = 0.0;
-        if (i == action_idx) {
+        if (i == action_param) {
           action_error = error_;
         }
         for (int j = 0; j < kFeaturesDim; ++j) {
