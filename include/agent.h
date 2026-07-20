@@ -4,6 +4,7 @@
 #include <extern/miniexpr.h>
 
 #include <extern/json.hpp>
+#include <model_ref.h>
 #include <algorithm>
 #include <concepts>
 #include <iostream>

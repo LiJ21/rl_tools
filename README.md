@@ -128,9 +128,12 @@ the normal `UpdateState`, `CollectReward`, and `TerminatePath` interaction but
 only records raw rollout data:
 
 ```cpp
-using Actor = RLlib::DiscretePPOAgent<Model, Action, Reward, false>;
+using ActorModel = RLlib::ModelRef<Model>;
+using Actor = RLlib::DiscretePPOAgent<ActorModel, Action, Reward, false>;
 
 Model learner_model(config["model"]);
+Model actor_model(config["model"]);
+Actor actor(actions, config, actor_model);
 RLlib::DistributedLearner learner(learner_model, config);
 
 // Initially, and after every learner update:
@@ -146,6 +149,17 @@ without crossing the submitted episode boundaries and normalizes advantages
 over the combined batch. The application owns collection barriers and model
 synchronization, so the same buffer API can be transported with threads,
 OpenMP, or MPI.
+
+`ModelRef<Model>` is a non-owning adapter for externally managed models. This
+is useful when an application wants each collector to own its model alongside
+its thread or worker rather than having the agent construct the model from
+`config["model"]`. The referenced model must outlive the agent, and concurrent
+collectors should each refer to a separate model instance. PPO construction
+also accepts separate model parameters for an ordinarily owned model:
+
+```cpp
+RLlib::PPOAgent<Model, Action, Reward> agent(agent_config, model_params);
+```
 
 ---
 

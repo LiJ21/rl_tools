@@ -122,6 +122,11 @@ using CollectingAgent =
 using GenericAgent = RLlib::PPOAgent<MockPolicyModel, int, double>;
 using CustomActionAgent =
     RLlib::PPOAgent<CustomActionPolicyModel, double, double, AmplitudeMapper>;
+using ReferencedAgent =
+    RLlib::DiscretePPOAgent<RLlib::ModelRef<MockPolicyModel>, int, double>;
+using ReferencedCollectingAgent =
+    RLlib::DiscretePPOAgent<RLlib::ModelRef<MockPolicyModel>, int, double,
+                            false>;
 
 template <typename TAgent>
 concept CHasFlushBatch = requires(TAgent &agent) { agent.FlushBatch(); };
@@ -183,6 +188,20 @@ TEST(PPOAgent, IdentityMapperNeedsNoActionList) {
 
   ASSERT_EQ(agent.GetModel().rollouts.size(), 1);
   EXPECT_EQ(agent.GetModel().rollouts[0].action_params, std::vector<int>({0}));
+}
+
+TEST(PPOAgent, AcceptsSeparateOwnedModelParameters) {
+  auto config = AgentConfig();
+  config.erase("model");
+  GenericAgent agent(config, json::object());
+
+  agent.UpdateState({1.0});
+  agent.CollectReward(2.0);
+  agent.TerminatePath();
+  agent.FlushBatch();
+
+  ASSERT_EQ(agent.GetModel().rollouts.size(), 1);
+  EXPECT_EQ(agent.GetModel().rollouts[0].returns, std::vector<double>({2.0}));
 }
 
 TEST(PPOAgent, PreservesCustomActionParamForLearning) {
@@ -366,6 +385,32 @@ TEST(DiscretePPOAgent, NonAutoLearningAgentOnlyCollectsRawBuffer) {
   EXPECT_FALSE(buffer.path_end_bootstraps[0].has_value());
   ASSERT_TRUE(buffer.path_end_bootstraps[1].has_value());
   EXPECT_EQ(*buffer.path_end_bootstraps[1], 0.0);
+}
+
+TEST(DiscretePPOAgent, ModelRefLearnsThroughAnExternallyOwnedModel) {
+  MockPolicyModel model(json::object());
+  ReferencedAgent agent({10, 20}, AgentConfig(1), model);
+
+  EXPECT_EQ(&agent.GetModel().Get(), &model);
+  EXPECT_EQ(agent.UpdateState({1.0}), 10);
+  agent.CollectReward(2.0);
+  agent.TerminatePath();
+
+  ASSERT_EQ(model.rollouts.size(), 1);
+  EXPECT_EQ(model.rollouts[0].returns, std::vector<double>({2.0}));
+}
+
+TEST(DiscretePPOAgent, ModelRefCanCollectWithoutMutatingTheExternalModel) {
+  MockPolicyModel model(json::object());
+  ReferencedCollectingAgent agent({10, 20}, AgentConfig(1), model);
+
+  agent.UpdateState({1.0});
+  agent.CollectReward(2.0);
+  agent.TerminatePath();
+
+  EXPECT_TRUE(model.rollouts.empty());
+  auto buffer = agent.ReleaseBuffer();
+  EXPECT_EQ(buffer.states, std::vector<MockPolicyModel::State>({{1.0}}));
 }
 
 TEST(DiscretePPOAgent, ReleaseBufferRequiresAClosedPath) {

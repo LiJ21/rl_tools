@@ -187,8 +187,11 @@ TEST(DistributedLearner, AcceptsConcurrentBufferSubmissions) {
 
 using Network = RLlib::Models::ActorCriticNetwork<double, double>;
 using TorchModel = RLlib::Models::PPOLearner<Network>;
+using TorchModelRef = RLlib::ModelRef<TorchModel>;
 
 static_assert(RLlib::CWeightImportableModel<TorchModel>);
+static_assert(RLlib::CPolicyModel<TorchModelRef>);
+static_assert(RLlib::CWeightImportableModel<TorchModelRef>);
 
 json TorchModelConfig() {
   return {

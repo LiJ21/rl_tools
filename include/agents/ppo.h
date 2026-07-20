@@ -134,17 +134,48 @@ public:
       "PPO ActionMapper result must be convertible to the environment Action");
 
   PPOAgent(const char *config_file)
-    requires std::default_initializable<ActionMapper>
+    requires std::default_initializable<ActionMapper> &&
+             std::constructible_from<Model, const json &>
       : PPOAgent(ActionMapper{}, load_json(config_file)) {}
 
   PPOAgent(const json &config)
-    requires std::default_initializable<ActionMapper>
+    requires std::default_initializable<ActionMapper> &&
+             std::constructible_from<Model, const json &>
       : PPOAgent(ActionMapper{}, config) {}
 
   PPOAgent(ActionMapper action_mapper, const char *config_file)
+    requires std::constructible_from<Model, const json &>
       : PPOAgent(std::move(action_mapper), load_json(config_file)) {}
 
   PPOAgent(ActionMapper action_mapper, const json &config)
+    requires std::constructible_from<Model, const json &>
+      : PPOAgent(std::move(action_mapper), config, config["model"]) {}
+
+  template <typename TModelParams>
+  PPOAgent(const char *config_file, TModelParams &&model_params)
+    requires std::default_initializable<ActionMapper> &&
+             std::constructible_from<Model, TModelParams &&>
+      : PPOAgent(ActionMapper{}, load_json(config_file),
+                 std::forward<TModelParams>(model_params)) {}
+
+  template <typename TModelParams>
+  PPOAgent(const json &config, TModelParams &&model_params)
+    requires std::default_initializable<ActionMapper> &&
+             std::constructible_from<Model, TModelParams &&>
+      : PPOAgent(ActionMapper{}, config,
+                 std::forward<TModelParams>(model_params)) {}
+
+  template <typename TModelParams>
+  PPOAgent(ActionMapper action_mapper, const char *config_file,
+           TModelParams &&model_params)
+    requires std::constructible_from<Model, TModelParams &&>
+      : PPOAgent(std::move(action_mapper), load_json(config_file),
+                 std::forward<TModelParams>(model_params)) {}
+
+  template <typename TModelParams>
+  PPOAgent(ActionMapper action_mapper, const json &config,
+           TModelParams &&model_params)
+    requires std::constructible_from<Model, TModelParams &&>
       : Base(config), action_mapper_(std::move(action_mapper)),
         gamma_(config.value("gamma", 0.99)),
         lambda_(config.value("gae_lambda", 0.95)),
@@ -152,7 +183,7 @@ public:
             "batch_steps",
             config.value("horizon", static_cast<std::size_t>(2048)))),
         normalize_adv_(config.value("normalize_advantage", true)),
-        model_(config["model"]) {
+        model_(std::forward<TModelParams>(model_params)) {
     static_assert(CPolicyModel<TModel>,
                   "TModel must satisfy the CPolicyModel concept");
     static_assert(std::copy_constructible<ActionParam>,
@@ -315,11 +346,35 @@ public:
   DiscretePPOAgent(const ActionsList &actions, const json &config)
       : Base(ActionMapper(actions), config) {}
 
+  template <typename TModelParams>
+  DiscretePPOAgent(const ActionsList &actions, const char *config_file,
+                   TModelParams &&model_params)
+      : Base(ActionMapper(actions), config_file,
+             std::forward<TModelParams>(model_params)) {}
+
+  template <typename TModelParams>
+  DiscretePPOAgent(const ActionsList &actions, const json &config,
+                   TModelParams &&model_params)
+      : Base(ActionMapper(actions), config,
+             std::forward<TModelParams>(model_params)) {}
+
   DiscretePPOAgent(ActionsList &&actions, const char *config_file)
       : Base(ActionMapper(std::move(actions)), config_file) {}
 
   DiscretePPOAgent(ActionsList &&actions, const json &config)
       : Base(ActionMapper(std::move(actions)), config) {}
+
+  template <typename TModelParams>
+  DiscretePPOAgent(ActionsList &&actions, const char *config_file,
+                   TModelParams &&model_params)
+      : Base(ActionMapper(std::move(actions)), config_file,
+             std::forward<TModelParams>(model_params)) {}
+
+  template <typename TModelParams>
+  DiscretePPOAgent(ActionsList &&actions, const json &config,
+                   TModelParams &&model_params)
+      : Base(ActionMapper(std::move(actions)), config,
+             std::forward<TModelParams>(model_params)) {}
 };
 
 } // namespace RLlib
