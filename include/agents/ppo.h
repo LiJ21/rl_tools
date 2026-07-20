@@ -2,7 +2,6 @@
 #define AGENTS_PPO_H
 #include <agent.h>
 
-#include <cmath>
 #include <concepts>
 #include <optional>
 #include <stdexcept>
@@ -10,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "agents/ppo_buffer.h"
 #include "agents/sarsa.h" // for RLlib::load_json
 
 namespace RLlib {
@@ -94,24 +94,37 @@ concept CPolicyModel =
       { decision.value } -> std::convertible_to<double>;
     };
 
+// Importing weights is deliberately a separate contract: ordinary policy
+// models need not support distributed actor synchronization.
+template <typename TModel>
+concept CWeightImportableModel =
+    requires(TModel destination, const TModel source) {
+      { destination.ImportWeights(source) } -> std::same_as<void>;
+    };
+
 // Proximal Policy Optimization agent. The model defines the probability-bearing
 // ActionParam stored in the batch, while ActionMapper converts it into the
 // environment-facing Action returned by UpdateState.
 template <typename TModel, typename TAction, typename TReward,
           typename TActionMapper =
-              IdentityActionMapper<typename TModel::ActionParam, TAction>>
+              IdentityActionMapper<typename TModel::ActionParam, TAction>,
+          bool tAutoLearn = true>
 class PPOAgent
-    : public AgentBase<PPOAgent<TModel, TAction, TReward, TActionMapper>,
-                       TAction, TReward, typename TModel::State> {
+    : public AgentBase<
+          PPOAgent<TModel, TAction, TReward, TActionMapper, tAutoLearn>,
+          TAction, TReward, typename TModel::State> {
 public:
   using Model = TModel;
-  using Self = PPOAgent<TModel, TAction, TReward, TActionMapper>;
+  using Self = PPOAgent<TModel, TAction, TReward, TActionMapper, tAutoLearn>;
   using Base = AgentBase<Self, TAction, TReward, typename TModel::State>;
   using State = typename Model::State;
   using Action = TAction;
   using ActionParam = typename Model::ActionParam;
   using ActionMapper = TActionMapper;
   using Reward = TReward;
+  using Buffer = PPORolloutBuffer<State, ActionParam>;
+
+  static constexpr bool AutoLearn = tAutoLearn;
 
   static_assert(std::invocable<ActionMapper &, const ActionParam &>,
                 "PPO ActionMapper must accept const ActionParam&");
@@ -147,12 +160,7 @@ public:
     if (batch_steps_ == 0) {
       throw std::invalid_argument("PPO batch_steps must be greater than zero");
     }
-    states_.reserve(batch_steps_);
-    action_params_.reserve(batch_steps_);
-    log_probs_.reserve(batch_steps_);
-    values_.reserve(batch_steps_);
-    rewards_.reserve(batch_steps_);
-    path_end_bootstraps_.reserve(batch_steps_);
+    buffer_.Reserve(batch_steps_);
   }
 
   void UpdateStateImpl() {
@@ -161,8 +169,10 @@ public:
     // before sampling from the policy that will generate the next batch.
     if (pending_transition_) {
       AppendPendingTransition();
-      if (BatchIsReady()) {
-        Learn(model_.EvaluateValue(Base::state_));
+      if constexpr (tAutoLearn) {
+        if (BatchIsReady()) {
+          Learn(model_.EvaluateValue(Base::state_));
+        }
       }
     }
 
@@ -186,7 +196,9 @@ public:
 
   // Explicitly learn from a final partial batch. Every collected path must
   // already have been closed with TerminatePath so its bootstrap is known.
-  void FlushBatch() {
+  void FlushBatch()
+    requires(tAutoLearn)
+  {
     if (pending_transition_) {
       throw std::logic_error(
           "TerminatePath must close the current path before FlushBatch");
@@ -201,6 +213,25 @@ public:
   void SetLambda(double lambda) { lambda_ = lambda; }
 
   auto &GetModel() { return model_; }
+  const auto &GetModel() const { return model_; }
+
+  const Buffer &GetBuffer() const { return buffer_; }
+
+  std::size_t BufferSize() const { return buffer_.Size(); }
+
+  // Transfer is only safe at a path boundary. This is the deployment-facing
+  // operation used by threaded or distributed collectors.
+  Buffer ReleaseBuffer() {
+    if (pending_transition_) {
+      throw std::logic_error(
+          "TerminatePath must close the current path before ReleaseBuffer");
+    }
+    buffer_.ValidateComplete();
+    Buffer released = std::move(buffer_);
+    buffer_ = Buffer{};
+    buffer_.Reserve(batch_steps_);
+    return released;
+  }
 
 private:
   struct PendingTransition {
@@ -212,12 +243,13 @@ private:
 
   void AppendPendingTransition(
       std::optional<double> path_end_bootstrap = std::nullopt) {
-    states_.push_back(std::move(pending_transition_->state));
-    action_params_.push_back(std::move(pending_transition_->action_param));
-    log_probs_.push_back(pending_transition_->log_prob);
-    values_.push_back(pending_transition_->value);
-    rewards_.push_back(static_cast<double>(Base::reward_));
-    path_end_bootstraps_.push_back(path_end_bootstrap);
+    buffer_.states.push_back(std::move(pending_transition_->state));
+    buffer_.action_params.push_back(
+        std::move(pending_transition_->action_param));
+    buffer_.old_log_probs.push_back(pending_transition_->log_prob);
+    buffer_.values.push_back(pending_transition_->value);
+    buffer_.rewards.push_back(static_cast<double>(Base::reward_));
+    buffer_.path_end_bootstraps.push_back(path_end_bootstrap);
     pending_transition_.reset();
   }
 
@@ -225,63 +257,28 @@ private:
     if (!pending_transition_)
       return;
     AppendPendingTransition(bootstrap_value);
-    if (BatchIsReady()) {
-      // The final transition's path marker supplies the bootstrap value.
-      Learn(0.0);
+    if constexpr (tAutoLearn) {
+      if (BatchIsReady()) {
+        // The final transition's path marker supplies the bootstrap value.
+        Learn(0.0);
+      }
     }
   }
 
-  bool BatchIsReady() const { return states_.size() >= batch_steps_; }
+  bool BatchIsReady() const { return buffer_.Size() >= batch_steps_; }
 
   void Learn(double trailing_bootstrap) {
-    const std::size_t N = states_.size();
-    if (N == 0)
+    if (buffer_.Empty())
       return;
-    std::vector<double> advantages(N), returns(N);
-
-    double gae = 0.0;
-    double next_value = trailing_bootstrap;
-    for (int t = static_cast<int>(N) - 1; t >= 0; --t) {
-      if (path_end_bootstraps_[t]) {
-        // Do not let GAE cross into a different episode. A truncation still
-        // bootstraps its delta, while a true terminal stores zero.
-        gae = 0.0;
-        next_value = *path_end_bootstraps_[t];
-      }
-      double delta = rewards_[t] + gamma_ * next_value - values_[t];
-      gae = delta + gamma_ * lambda_ * gae;
-      advantages[t] = gae;
-      returns[t] = gae + values_[t];
-      next_value = values_[t];
-    }
-
-    if (normalize_adv_ && N > 1) {
-      double mean = 0.0;
-      for (double a : advantages)
-        mean += a;
-      mean /= static_cast<double>(N);
-      double var = 0.0;
-      for (double a : advantages)
-        var += (a - mean) * (a - mean);
-      var /= static_cast<double>(N);
-      double stddev = std::sqrt(var) + 1e-8;
-      for (double &a : advantages)
-        a = (a - mean) / stddev;
-    }
-
-    model_.LearnFromBatch(states_, action_params_, log_probs_, advantages,
-                          returns);
+    const auto targets = ComputePPOTargets(buffer_, gamma_, lambda_,
+                                           normalize_adv_, trailing_bootstrap);
+    model_.LearnFromBatch(buffer_.states, buffer_.action_params,
+                          buffer_.old_log_probs, targets.advantages,
+                          targets.returns);
     ClearBatch();
   }
 
-  void ClearBatch() {
-    states_.clear();
-    action_params_.clear();
-    log_probs_.clear();
-    values_.clear();
-    rewards_.clear();
-    path_end_bootstraps_.clear();
-  }
+  void ClearBatch() { buffer_.Clear(); }
 
   ActionMapper action_mapper_;
   double gamma_;
@@ -291,29 +288,25 @@ private:
   Model model_;
 
   std::optional<PendingTransition> pending_transition_;
-
-  std::vector<State> states_;
-  std::vector<ActionParam> action_params_;
-  std::vector<double> log_probs_;
-  std::vector<double> values_;
-  std::vector<double> rewards_;
-  std::vector<std::optional<double>> path_end_bootstraps_;
+  Buffer buffer_;
 };
 
 // Convenience wrapper for categorical policies whose integral ActionParam
 // indexes an environment action list.
-template <typename TModel, typename TAction, typename TReward>
+template <typename TModel, typename TAction, typename TReward,
+          bool tAutoLearn = true>
 class DiscretePPOAgent
     : public PPOAgent<
           TModel, TAction, TReward,
-          IndexedActionMapper<typename TModel::ActionParam, TAction>> {
+          IndexedActionMapper<typename TModel::ActionParam, TAction>,
+          tAutoLearn> {
 public:
   using ActionParam = typename TModel::ActionParam;
   static_assert(std::integral<ActionParam>,
                 "DiscretePPOAgent requires an integral ActionParam");
 
   using ActionMapper = IndexedActionMapper<ActionParam, TAction>;
-  using Base = PPOAgent<TModel, TAction, TReward, ActionMapper>;
+  using Base = PPOAgent<TModel, TAction, TReward, ActionMapper, tAutoLearn>;
   using ActionsList = typename ActionMapper::ActionsList;
 
   DiscretePPOAgent(const ActionsList &actions, const char *config_file)

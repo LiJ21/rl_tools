@@ -10,6 +10,7 @@
 #include <numeric>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -208,10 +209,39 @@ public:
     net_.LoadModel(fname, delimiter);
   }
 
+  // Copy learned network state without replacing this model's parameter
+  // tensors. In-place copies preserve optimizer references and deliberately do
+  // not synchronize optimizer state or sampling RNG state.
+  void ImportWeights(const PPOLearner &source) {
+    torch::NoGradGuard no_grad;
+    CopyTensors(net_.parameters(),
+                const_cast<Network &>(source.net_).parameters(), "parameters");
+    CopyTensors(net_.buffers(), const_cast<Network &>(source.net_).buffers(),
+                "buffers");
+  }
+
   Network &GetNet() { return net_; }
   const Network &GetNet() const { return net_; }
 
 private:
+  static void CopyTensors(std::vector<torch::Tensor> destination,
+                          const std::vector<torch::Tensor> &source,
+                          std::string_view description) {
+    if (destination.size() != source.size()) {
+      throw std::invalid_argument("Cannot import PPO model " +
+                                  std::string(description) +
+                                  ": tensor counts differ");
+    }
+    for (std::size_t index = 0; index < destination.size(); ++index) {
+      if (destination[index].sizes().vec() != source[index].sizes().vec()) {
+        throw std::invalid_argument("Cannot import PPO model " +
+                                    std::string(description) +
+                                    ": tensor shapes differ");
+      }
+      destination[index].copy_(source[index]);
+    }
+  }
+
   torch::Tensor StateTensor(const State &state) const {
     if (state.size() != static_cast<std::size_t>(net_.FeaturesDim())) {
       throw std::invalid_argument(

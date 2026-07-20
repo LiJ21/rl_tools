@@ -117,9 +117,19 @@ struct AmplitudeMapper {
 };
 
 using Agent = RLlib::DiscretePPOAgent<MockPolicyModel, int, double>;
+using CollectingAgent =
+    RLlib::DiscretePPOAgent<MockPolicyModel, int, double, false>;
 using GenericAgent = RLlib::PPOAgent<MockPolicyModel, int, double>;
 using CustomActionAgent =
     RLlib::PPOAgent<CustomActionPolicyModel, double, double, AmplitudeMapper>;
+
+template <typename TAgent>
+concept CHasFlushBatch = requires(TAgent &agent) { agent.FlushBatch(); };
+
+static_assert(Agent::AutoLearn);
+static_assert(!CollectingAgent::AutoLearn);
+static_assert(CHasFlushBatch<Agent>);
+static_assert(!CHasFlushBatch<CollectingAgent>);
 
 json AgentConfig(std::size_t batch_steps = 16) {
   return {
@@ -335,6 +345,41 @@ TEST(DiscretePPOAgent, ResetRoundDoesNotDiscardPath) {
 
   ASSERT_EQ(agent.GetModel().rollouts.size(), 1);
   EXPECT_EQ(agent.GetModel().rollouts[0].returns, std::vector<double>({2.0}));
+}
+
+TEST(DiscretePPOAgent, NonAutoLearningAgentOnlyCollectsRawBuffer) {
+  CollectingAgent agent({10, 20}, AgentConfig(1));
+
+  EXPECT_EQ(agent.UpdateState({1.0}), 10);
+  agent.CollectReward(2.0);
+  EXPECT_EQ(agent.UpdateState({2.0}), 10);
+  agent.CollectReward(3.0);
+  agent.TerminatePath();
+
+  EXPECT_TRUE(agent.GetModel().rollouts.empty());
+  ASSERT_EQ(agent.BufferSize(), 2);
+
+  auto buffer = agent.ReleaseBuffer();
+  EXPECT_EQ(agent.BufferSize(), 0);
+  EXPECT_EQ(buffer.states, std::vector<MockPolicyModel::State>({{1.0}, {2.0}}));
+  EXPECT_EQ(buffer.rewards, std::vector<double>({2.0, 3.0}));
+  EXPECT_FALSE(buffer.path_end_bootstraps[0].has_value());
+  ASSERT_TRUE(buffer.path_end_bootstraps[1].has_value());
+  EXPECT_EQ(*buffer.path_end_bootstraps[1], 0.0);
+}
+
+TEST(DiscretePPOAgent, ReleaseBufferRequiresAClosedPath) {
+  CollectingAgent agent({10, 20}, AgentConfig());
+
+  agent.UpdateState({1.0});
+  agent.CollectReward(2.0);
+  EXPECT_THROW(agent.ReleaseBuffer(), std::logic_error);
+
+  agent.TerminatePath(MockPolicyModel::State{10.0});
+  auto buffer = agent.ReleaseBuffer();
+  ASSERT_EQ(buffer.Size(), 1);
+  ASSERT_TRUE(buffer.path_end_bootstraps[0].has_value());
+  EXPECT_EQ(*buffer.path_end_bootstraps[0], 10.0);
 }
 
 } // namespace

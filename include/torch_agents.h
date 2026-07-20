@@ -23,15 +23,14 @@ using OffPolicyJITNetworkSarsaAgent =
                TAction, TReward>;
 
 template <typename TAction = double, typename TFeature = double,
-          typename TReward = double>
+          typename TReward = double, bool tAutoLearn = true>
 using DiscretePPOActorCriticAgent =
-    DiscretePPOAgent<
-        Models::PPOLearner<Models::ActorCriticNetwork<TFeature>>, TAction,
-        TReward>;
+    DiscretePPOAgent<Models::PPOLearner<Models::ActorCriticNetwork<TFeature>>,
+                     TAction, TReward, tAutoLearn>;
 
 template <typename TAction = double, typename TFeature = double,
-          typename TReward = double>
+          typename TReward = double, bool tAutoLearn = true>
 using PPOActorCriticAgent =
-    DiscretePPOActorCriticAgent<TAction, TFeature, TReward>;
-}  // namespace RLlib
+    DiscretePPOActorCriticAgent<TAction, TFeature, TReward, tAutoLearn>;
+} // namespace RLlib
 #endif

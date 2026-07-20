@@ -120,6 +120,33 @@ wrapper where an integral parameter indexes a fixed action list. PPO batches
 retain `ActionParam` values so the model can recompute their policy
 log-probabilities during `LearnFromBatch`.
 
+### Parallel PPO collection
+
+`PPOAgent` and `DiscretePPOAgent` take a final `tAutoLearn` template
+parameter, which defaults to `true`. An agent instantiated with `false` keeps
+the normal `UpdateState`, `CollectReward`, and `TerminatePath` interaction but
+only records raw rollout data:
+
+```cpp
+using Actor = RLlib::DiscretePPOAgent<Model, Action, Reward, false>;
+
+Model learner_model(config["model"]);
+RLlib::DistributedLearner learner(learner_model, config);
+
+// Initially, and after every learner update:
+actor.GetModel().ImportWeights(learner_model);
+
+// Once collection has stopped at a path boundary:
+learner.Submit(actor.ReleaseBuffer());
+learner.Learn();
+```
+
+`Submit` is safe for concurrent thread submissions. `Learn` computes GAE
+without crossing the submitted episode boundaries and normalizes advantages
+over the combined batch. The application owns collection barriers and model
+synchronization, so the same buffer API can be transported with threads,
+OpenMP, or MPI.
+
 ---
 
 ## 📝 Notes
